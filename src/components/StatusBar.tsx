@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditorRef } from 'platejs/react';
 
 // Web Speech API types (not in all TS libs)
@@ -396,7 +397,9 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
   const digits = String(wordCount).length;
   const displayStr = String(displayCount).padStart(digits, '\u2007'); // figure space
 
-  return (
+  // Portal to document.body so fixed elements aren't clipped by
+  // overflow:hidden ancestors — fixes iOS keyboard positioning
+  return createPortal(
     <>
       {/* Page count — bottom left, positioned within editor area */}
       {totalPages > 1 && (
@@ -497,6 +500,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
           {displayStr} {isSelection ? 'selected' : 'words'}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
