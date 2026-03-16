@@ -614,6 +614,7 @@ input[type="range"]::-webkit-slider-thumb {
 .comment-card {
   position: relative;
   transition: opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: comment-slide-in 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .reviewer-avatar {
@@ -809,74 +810,76 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 4px;
 }
 
-/* ── Feedback reading shimmer — flows through text while reviewers read ── */
+/* ── Feedback reading shimmer — text-level gradient fill ── */
 
-@keyframes feedback-shimmer-sweep {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
+@keyframes feedback-text-shimmer {
+  0%   { background-position: 0% 0%; }
+  50%  { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
 }
 
-@keyframes feedback-glow-pulse {
-  0%, 100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 0.85;
-  }
-}
-
-.feedback-reading {
-  position: relative;
-}
-
-.feedback-reading::before,
-.feedback-reading::after {
-  pointer-events: none;
-}
-
-/* Primary shimmer — warm persona colors sweep diagonally */
-.feedback-reading [data-slate-editor] {
-  position: relative;
-}
-
-.feedback-reading [data-slate-editor]::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
+/* Apply gradient-as-text-color to all block elements in the editor */
+.feedback-reading [data-slate-editor] p,
+.feedback-reading [data-slate-editor] h1,
+.feedback-reading [data-slate-editor] h2,
+.feedback-reading [data-slate-editor] h3,
+.feedback-reading [data-slate-editor] li,
+.feedback-reading [data-slate-editor] blockquote,
+.feedback-reading [data-slate-editor] td,
+.feedback-reading [data-slate-editor] th {
   background: linear-gradient(
-    105deg,
-    transparent 0%,
-    transparent 30%,
-    rgba(232, 168, 124, 0.12) 36%,
-    rgba(212, 114, 106, 0.14) 42%,
-    rgba(123, 104, 168, 0.13) 48%,
-    rgba(91, 143, 168, 0.12) 54%,
-    transparent 60%,
-    transparent 100%
+    135deg,
+    var(--color-ink) 0%,
+    #C07A4A 10%,
+    var(--color-ink) 18%,
+    #B5504A 28%,
+    var(--color-ink) 36%,
+    #5E4E87 46%,
+    var(--color-ink) 54%,
+    #3D6E84 64%,
+    var(--color-ink) 72%,
+    #C07A4A 82%,
+    var(--color-ink) 90%,
+    #5E4E87 100%
   );
-  background-size: 200% 100%;
-  animation:
-    feedback-shimmer-sweep 3s cubic-bezier(0.4, 0, 0.2, 1) infinite,
-    feedback-glow-pulse 2s ease-in-out infinite;
-  border-radius: 2px;
-  mix-blend-mode: multiply;
+  background-size: 400% 400%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: feedback-text-shimmer 10s ease-in-out infinite;
 }
 
-/* Soft ambient glow on the page edges */
-.feedback-reading.page-container {
-  box-shadow:
-    0 1px 4px rgba(0,0,0,0.06),
-    0 6px 20px rgba(0,0,0,0.06),
-    0 0 40px rgba(232, 168, 124, 0.08),
-    0 0 80px rgba(123, 104, 168, 0.06);
-  transition: box-shadow 600ms ease-out;
+/* Shimmer fade-out — text color transitions back to ink */
+@keyframes feedback-fade-out {
+  0% { color: transparent; }
+  100% { color: var(--color-ink); }
 }
+
+.feedback-fading [data-slate-editor] p,
+.feedback-fading [data-slate-editor] h1,
+.feedback-fading [data-slate-editor] h2,
+.feedback-fading [data-slate-editor] h3,
+.feedback-fading [data-slate-editor] li,
+.feedback-fading [data-slate-editor] blockquote,
+.feedback-fading [data-slate-editor] td,
+.feedback-fading [data-slate-editor] th {
+  animation: feedback-fade-out 800ms ease-out forwards;
+}
+
+/* Comment cards stagger in */
+@keyframes comment-slide-in {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.comment-card:nth-child(1) { animation-delay: 0ms; }
+.comment-card:nth-child(2) { animation-delay: 80ms; }
+.comment-card:nth-child(3) { animation-delay: 160ms; }
+.comment-card:nth-child(4) { animation-delay: 240ms; }
+.comment-card:nth-child(5) { animation-delay: 320ms; }
+.comment-card:nth-child(6) { animation-delay: 400ms; }
+.comment-card:nth-child(7) { animation-delay: 480ms; }
+.comment-card:nth-child(8) { animation-delay: 560ms; }
 
 /* Collaborative cursor blink animation */
 @keyframes cursor-blink {

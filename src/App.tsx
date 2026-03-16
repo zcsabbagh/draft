@@ -97,6 +97,9 @@ export default function App() {
   const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(INITIAL_VALUE);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
+  const [shimmerFading, setShimmerFading] = useState(false);
+  const shimmerTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   const editorValueRef = useRef<unknown[]>(INITIAL_VALUE);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const plateEditorRef = useRef<any>(null);
@@ -171,6 +174,8 @@ export default function App() {
     }
 
     setIsLoading(true);
+    setShimmerFading(false);
+    clearTimeout(shimmerTimerRef.current);
     setError(null);
     setComments([]);
     setActiveCommentId(null);
@@ -183,6 +188,8 @@ export default function App() {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
       setIsLoading(false);
+      setShimmerFading(true);
+      shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
   }, [rubric, context]);
 
@@ -190,6 +197,8 @@ export default function App() {
     if (!selectedText.trim()) return;
 
     setIsLoading(true);
+    setShimmerFading(false);
+    clearTimeout(shimmerTimerRef.current);
     setError(null);
     setComments([]);
     setActiveCommentId(null);
@@ -203,6 +212,8 @@ export default function App() {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
       setIsLoading(false);
+      setShimmerFading(true);
+      shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
   }, [rubric, context]);
 
@@ -747,6 +758,8 @@ export default function App() {
               collabUrl={import.meta.env.VITE_COLLAB_URL || undefined}
               documentId={documentId}
               isMobile={isMobile}
+              isLoading={isLoading}
+              isShimmerFading={shimmerFading}
             />
           </div>
           {/* Read-only snapshot overlay */}

@@ -105,6 +105,8 @@ interface EditorProps {
   collabUrl?: string;       // Hocuspocus WebSocket URL, e.g. ws://localhost:8888
   documentId?: string;      // Document name for collab
   isMobile?: boolean;       // Mobile layout mode
+  isLoading?: boolean;      // Show reading shimmer animation
+  isShimmerFading?: boolean; // Shimmer fade-out transition
 }
 
 // Toolbar button component
@@ -719,6 +721,8 @@ export default function Editor({
   collabUrl,
   documentId = 'draft-default',
   isMobile = false,
+  isLoading = false,
+  isShimmerFading = false,
 }: EditorProps) {
   const fontFamily = getFontByName(fontName).family;
   const useCollab = !!collabUrl;
@@ -1279,7 +1283,7 @@ export default function Editor({
           />
         )}
         <div
-          className="page-container"
+          className={`page-container${isLoading ? ' feedback-reading' : ''}${isShimmerFading ? ' feedback-fading' : ''}`}
           style={{
             position: 'relative',
             transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
