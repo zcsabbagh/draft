@@ -57,6 +57,28 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
   // within the editor area instead of the full viewport.
   const [containerRect, setContainerRect] = useState<{ left: number; right: number } | null>(null);
 
+  // Track keyboard height via visualViewport so the status bar stays above the keyboard
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      // The difference between layout viewport height and visual viewport height + offsetTop
+      // tells us how much the keyboard is pushing up
+      const offset = window.innerHeight - (vv.height + vv.offsetTop);
+      setKeyboardOffset(Math.max(0, offset));
+    };
+
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
+
   useEffect(() => {
     const el = editorRef.current;
     if (!el) return;
@@ -373,7 +395,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
           className="text-xs rounded-full"
           style={{
             position: 'fixed',
-            bottom: 16,
+            bottom: 16 + keyboardOffset,
             left: containerRect ? containerRect.left + 16 : 16,
             backgroundColor: 'var(--color-cream-dark, #F0F0EC)',
             color: 'var(--color-ink-lighter, #9B9B9B)',
@@ -381,6 +403,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
             userSelect: 'none',
             fontVariantNumeric: 'tabular-nums',
             zIndex: 40,
+            transition: 'bottom 0.15s ease-out',
           }}
         >
           Page {currentPage} of {totalPages}
@@ -392,9 +415,10 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
         className="flex items-center gap-2"
         style={{
           position: 'fixed',
-          bottom: 16,
+          bottom: 16 + keyboardOffset,
           right: containerRect ? window.innerWidth - containerRect.right + 16 : 16,
           zIndex: 40,
+          transition: 'bottom 0.15s ease-out',
         }}
       >
         {/* Mic error tooltip */}
