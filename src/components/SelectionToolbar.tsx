@@ -47,13 +47,17 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
       hideTimeout.current = null;
     }
 
-    const rect = range.getBoundingClientRect();
+    // Use the first client rect (first line of selection) instead of the full
+    // bounding rect so the toolbar stays anchored to where the selection starts,
+    // not jumping as more lines are selected.
+    const rects = range.getClientRects();
+    const firstRect = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
 
     setSelectedText(text);
     setPosition({
-      top: rect.top - containerRect.top + container.scrollTop - 44,
-      left: rect.left - containerRect.left + rect.width / 2,
+      top: firstRect.top - containerRect.top + container.scrollTop - 44,
+      left: firstRect.left - containerRect.left + firstRect.width / 2,
     });
     setVisible(true);
   }, [containerRef, disabled]);
