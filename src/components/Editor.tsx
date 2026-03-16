@@ -38,6 +38,7 @@ import { getFontByName, FONT_OPTIONS } from '../lib/fonts';
 import type { FeedbackComment } from '../lib/types';
 import type { Citation } from '../lib/api';
 import { useEditorBridge } from '../hooks/useEditorBridge';
+import CursorOverlay from './CursorOverlay';
 
 const HIGHLIGHT_STYLES: Record<string, React.CSSProperties> = {
   vague: { backgroundColor: '#FFF3E8', borderBottom: '2px solid #E8A87C', borderRadius: 2, cursor: 'pointer', padding: '1px 0' },
@@ -1212,6 +1213,7 @@ export default function Editor({
         <div
           className="page-container"
           style={{
+            position: 'relative',
             transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
             transformOrigin: 'top center',
           }}
@@ -1250,6 +1252,7 @@ export default function Editor({
               }
             }}
           />
+          {useCollab && <CursorOverlay />}
           {citations.length > 0 && (
             <div className="page-content !pt-0 !min-h-0" style={{ fontFamily }}>
               <hr className="border-border mb-6" />

@@ -693,3 +693,13 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(0,0,0,0.04);
   border-radius: 4px;
 }
+
+/* Collaborative cursor blink animation */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-caret-blink {
+  animation: cursor-blink 1s ease-in-out infinite;
+}
