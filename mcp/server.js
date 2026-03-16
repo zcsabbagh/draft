@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
 import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { createEditor, Transforms, Editor, Node, Text } from 'slate';
 import { withYjs, YjsEditor } from '@slate-yjs/core';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // ── Constants ────────────────────────────────────────────────────────
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DIST_DIR = path.join(__dirname, 'dist');
+const DRAFT_APP_URL = process.env.DRAFT_APP_URL || 'https://draft-blue.vercel.app';
+const RESOURCE_URI = 'ui://drafts/document-preview.html';
 
 const DEFAULT_HOCUSPOCUS_URL = process.env.DRAFTS_SERVER_URL || 'wss://draft-collab-production.up.railway.app';
 const DEFAULT_DOCUMENT = process.env.DRAFTS_DOCUMENT || 'default';
@@ -223,14 +233,20 @@ function parseShareUrl(shareUrl) {
 }
 
 // 0. connect_document — connect to a document via Hocuspocus URL or Draft share URL
-server.tool(
+//    Registered as an MCP App tool to show a live document preview
+registerAppTool(
+  server,
   'connect_document',
-  `Connect to a collaborative document. You can pass a Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) and the document ID will be extracted automatically. Or provide a Hocuspocus WebSocket URL and document name directly. Defaults to ${DEFAULT_HOCUSPOCUS_URL} if no URL provided.`,
   {
-    url: z.string().optional().describe(`Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) or Hocuspocus WebSocket URL (default: ${DEFAULT_HOCUSPOCUS_URL})`),
-    document: z.string().optional().describe(`Document name/ID to connect to (default: "${DEFAULT_DOCUMENT}"). Ignored if a share URL is provided.`),
-    name: z.string().optional().describe('Your display name (shown to other collaborators)'),
-    color: z.string().optional().describe('Your cursor color as hex, e.g. #C66140'),
+    title: 'Connect to Document',
+    description: `Connect to a collaborative document. You can pass a Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) and the document ID will be extracted automatically. Or provide a Hocuspocus WebSocket URL and document name directly. Defaults to ${DEFAULT_HOCUSPOCUS_URL} if no URL provided.`,
+    inputSchema: {
+      url: z.string().optional().describe(`Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) or Hocuspocus WebSocket URL (default: ${DEFAULT_HOCUSPOCUS_URL})`),
+      document: z.string().optional().describe(`Document name/ID to connect to (default: "${DEFAULT_DOCUMENT}"). Ignored if a share URL is provided.`),
+      name: z.string().optional().describe('Your display name (shown to other collaborators)'),
+      color: z.string().optional().describe('Your cursor color as hex, e.g. #C66140'),
+    },
+    _meta: { ui: { resourceUri: RESOURCE_URI } },
   },
   async ({ url, document: docName, name, color }) => {
     try {
@@ -262,10 +278,18 @@ server.tool(
         role: 'editor',
       });
       await connectToDocument(serverUrl, documentName, token);
+
+      const editorUrl = `${DRAFT_APP_URL}/d/${encodeURIComponent(documentName)}?embed`;
+
       return {
         content: [{
           type: 'text',
-          text: `Connected to "${documentName}" at ${serverUrl}. All editing tools now operate on this document.`,
+          text: JSON.stringify({
+            connected: true,
+            document: documentName,
+            server: serverUrl,
+            editorUrl,
+          }),
         }],
       };
     } catch (err) {
@@ -837,9 +861,139 @@ server.tool(
   }
 );
 
+// ── WebSocket bridge helper (for tools that need the live editor) ────
+
+const WS_BRIDGE_URL = process.env.DRAFTS_WS_URL || 'ws://localhost:3000/ws/editor';
+
+function sendToEditor(message) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(WS_BRIDGE_URL);
+    const id = `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error('Timed out waiting for editor response'));
+    }, 30000);
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({ type: 'register', role: 'mcp' }));
+      ws.send(JSON.stringify({ id, ...message }));
+    });
+
+    ws.on('message', (raw) => {
+      try {
+        const resp = JSON.parse(raw.toString());
+        if (resp.id === id) {
+          clearTimeout(timeout);
+          ws.close();
+          if (resp.error) {
+            reject(new Error(resp.error));
+          } else {
+            resolve(resp.result);
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    });
+
+    ws.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+}
+
+// 22. translate_text
+server.tool(
+  'translate_text',
+  'Translate text to a target language using the Claude API via the live editor. The editor must be running at localhost:3000.',
+  {
+    text: z.string().describe('The text to translate'),
+    target_language: z.string().describe('The target language to translate into (e.g. "Spanish", "French", "Japanese")'),
+  },
+  async ({ text, target_language }) => {
+    try {
+      const result = await sendToEditor({
+        type: 'translate_text',
+        text,
+        targetLanguage: target_language,
+      });
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ success: true, translatedText: result.translatedText }, null, 2),
+        }],
+      };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// ── MCP App Resource — serves the bundled HTML UI ────────────────────
+
+registerAppResource(
+  server,
+  'Document Preview',
+  RESOURCE_URI,
+  { mimeType: RESOURCE_MIME_TYPE },
+  async () => {
+    const html = fs.readFileSync(path.join(DIST_DIR, 'mcp-app.html'), 'utf-8');
+    return {
+      contents: [{
+        uri: RESOURCE_URI,
+        mimeType: RESOURCE_MIME_TYPE,
+        text: html,
+        _meta: {
+          ui: {
+            csp: {
+              frameDomains: ['https://draft-blue.vercel.app', 'http://localhost:3000'],
+              connectDomains: ['https://draft-blue.vercel.app', 'http://localhost:3000'],
+            },
+          },
+        },
+      }],
+    };
+  }
+);
+
 // ── Start ───────────────────────────────────────────────────────────
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error('[Drafts] MCP server started');
-console.error('[Drafts] Use connect_document to connect to a document');
+if (process.argv.includes('--http')) {
+  // HTTP transport for testing with basic-host
+  const { default: express } = await import('express');
+  const { default: cors } = await import('cors');
+
+  const port = parseInt(process.env.PORT || '3001', 10);
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
+
+  app.all('/mcp', async (req, res) => {
+    const httpTransport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    res.on('close', () => {
+      httpTransport.close().catch(() => {});
+    });
+    try {
+      // For HTTP mode, create a fresh server per request
+      const httpServer = new McpServer({ name: 'Drafts', version: '1.0.0' });
+      // Re-register tools on this instance... for now, just use the main server
+      await server.connect(httpTransport);
+      await httpTransport.handleRequest(req, res, req.body);
+    } catch (error) {
+      console.error('MCP error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
+      }
+    }
+  });
+
+  app.listen(port, () => {
+    console.error(`[Drafts] MCP server listening on http://localhost:${port}/mcp`);
+  });
+} else {
+  // Default: stdio transport
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error('[Drafts] MCP server started');
+  console.error('[Drafts] Use connect_document to connect to a document');
+}

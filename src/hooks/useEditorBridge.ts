@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { translateText } from '../lib/api';
 
 type AnyEditor = any;
 
@@ -272,6 +273,50 @@ export function useEditorBridge(editor: AnyEditor | null) {
             id: msg.id,
             result: { success: found, commentId: found ? commentId : null },
           }));
+          break;
+        }
+
+        case 'translate_text': {
+          const { text: sourceText, targetLanguage } = msg as BridgeMessage & {
+            text: string;
+            targetLanguage: string;
+          };
+
+          // Call the Claude API to translate, then replace the text in the editor
+          translateText(sourceText, targetLanguage).then((translatedText) => {
+            // Find and replace the source text in the editor
+            for (let i = 0; i < ed.children.length; i++) {
+              const block = ed.children[i] as any;
+              if (!block.children) continue;
+              for (let j = 0; j < block.children.length; j++) {
+                const leaf = block.children[j] as any;
+                if (typeof leaf.text !== 'string') continue;
+                const idx = leaf.text.indexOf(sourceText);
+                if (idx !== -1) {
+                  const anchor = { path: [i, j], offset: idx };
+                  const focus = { path: [i, j], offset: idx + sourceText.length };
+                  ed.select({ anchor, focus });
+                  ed.insertText(translatedText);
+                  wsRef.current?.send(JSON.stringify({
+                    id: msg.id,
+                    result: { success: true, translatedText },
+                  }));
+                  return;
+                }
+              }
+            }
+
+            // Text not found in document, still return the translation
+            wsRef.current?.send(JSON.stringify({
+              id: msg.id,
+              result: { success: true, translatedText },
+            }));
+          }).catch((err: unknown) => {
+            wsRef.current?.send(JSON.stringify({
+              id: msg.id,
+              error: String(err),
+            }));
+          });
           break;
         }
 
