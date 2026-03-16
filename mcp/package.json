@@ -20,6 +20,8 @@
   "dependencies": {
     "@hocuspocus/provider": "^3.4.4",
     "@modelcontextprotocol/sdk": "latest",
+    "@slate-yjs/core": "^1.0.2",
+    "slate": "^0.123.0",
     "ws": "^8.0.0",
     "yjs": "^13.6.30",
     "zod": "^3.23.8"

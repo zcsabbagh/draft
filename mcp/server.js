@@ -5,6 +5,8 @@ import { z } from 'zod';
 import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { HocuspocusProvider } from '@hocuspocus/provider';
+import { createEditor, Transforms, Editor, Node, Text } from 'slate';
+import { withYjs, YjsEditor } from '@slate-yjs/core';
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -186,6 +188,21 @@ function applyMarks(root, search, marks) {
   });
 
   return count;
+}
+
+// ── Headless Slate editor helper ─────────────────────────────────────
+
+async function withHeadlessEditor(fn) {
+  if (!yjsConnected || !yjsDoc) throw new Error('No document connected');
+  const sharedRoot = getSharedRoot();
+  const editor = withYjs(createEditor(), sharedRoot);
+  YjsEditor.connect(editor);
+  await new Promise(r => setTimeout(r, 200)); // let sync complete
+  try {
+    return fn(editor);
+  } finally {
+    YjsEditor.disconnect(editor);
+  }
 }
 
 // ── MCP Server ──────────────────────────────────────────────────────
@@ -461,6 +478,362 @@ server.tool(
         }, null, 2),
       }],
     };
+  }
+);
+
+// 10. insert_page_break
+server.tool(
+  'insert_page_break',
+  'Insert a page break at the end of the document',
+  {},
+  async () => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        Transforms.insertNodes(editor, { type: 'page_break', children: [{ text: '' }] }, { at: [editor.children.length] });
+        return { content: [{ type: 'text', text: JSON.stringify({ inserted: true, blockType: 'page_break' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 11. insert_horizontal_rule
+server.tool(
+  'insert_horizontal_rule',
+  'Insert a horizontal rule at the end of the document',
+  {},
+  async () => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        Transforms.insertNodes(editor, { type: 'hr', children: [{ text: '' }] }, { at: [editor.children.length] });
+        return { content: [{ type: 'text', text: JSON.stringify({ inserted: true, blockType: 'hr' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 12. set_block_type
+server.tool(
+  'set_block_type',
+  'Change the type of a block element (e.g. paragraph to heading). Finds the block containing the search text and changes its type.',
+  {
+    search: z.string().describe('Text to locate the block'),
+    type: z.string().describe('New block type: p, h1, h2, h3, blockquote'),
+  },
+  async ({ search, type }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (!Text.isText(node)) continue;
+          if (node.text.includes(search)) {
+            // Get the top-level block path
+            const blockPath = [path[0]];
+            Transforms.setNodes(editor, { type }, { at: blockPath });
+            return { content: [{ type: 'text', text: JSON.stringify({ updated: true, path: blockPath, newType: type }) }] };
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ updated: false, reason: 'Text not found' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 13. set_text_style
+server.tool(
+  'set_text_style',
+  'Set font family and/or font size on matching text using format marks',
+  {
+    search: z.string().describe('The text to style'),
+    fontFamily: z.string().optional().describe('Font family name, e.g. "Georgia"'),
+    fontSize: z.string().optional().describe('Font size, e.g. "18px"'),
+  },
+  async ({ search, fontFamily, fontSize }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      const root = getSharedRoot();
+      const marks = {};
+      if (fontFamily) marks.fontFamily = fontFamily;
+      if (fontSize) marks.fontSize = fontSize;
+      if (Object.keys(marks).length === 0) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: 'No style properties provided' }) }] };
+      }
+      const count = applyMarks(root, search, marks);
+      return { content: [{ type: 'text', text: JSON.stringify({ styled: count, marks }) }] };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 14. set_alignment
+server.tool(
+  'set_alignment',
+  'Set the text alignment of a block containing the search text',
+  {
+    search: z.string().describe('Text to locate the block'),
+    align: z.enum(['left', 'center', 'right', 'justify']).describe('Alignment value'),
+  },
+  async ({ search, align }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (!Text.isText(node)) continue;
+          if (node.text.includes(search)) {
+            const blockPath = [path[0]];
+            Transforms.setNodes(editor, { align }, { at: blockPath });
+            return { content: [{ type: 'text', text: JSON.stringify({ updated: true, path: blockPath, align }) }] };
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ updated: false, reason: 'Text not found' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 15. set_line_spacing
+server.tool(
+  'set_line_spacing',
+  'Set the line spacing of a block containing the search text',
+  {
+    search: z.string().describe('Text to locate the block'),
+    spacing: z.string().describe('Line spacing value, e.g. "1", "1.5", "2"'),
+  },
+  async ({ search, spacing }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (!Text.isText(node)) continue;
+          if (node.text.includes(search)) {
+            const blockPath = [path[0]];
+            Transforms.setNodes(editor, { lineSpacing: spacing }, { at: blockPath });
+            return { content: [{ type: 'text', text: JSON.stringify({ updated: true, path: blockPath, lineSpacing: spacing }) }] };
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ updated: false, reason: 'Text not found' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 16. delete_block
+server.tool(
+  'delete_block',
+  'Delete a block element containing the search text',
+  {
+    search: z.string().describe('Text in the block to delete'),
+  },
+  async ({ search }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (!Text.isText(node)) continue;
+          if (node.text.includes(search)) {
+            const blockPath = [path[0]];
+            Transforms.removeNodes(editor, { at: blockPath });
+            return { content: [{ type: 'text', text: JSON.stringify({ deleted: true, path: blockPath }) }] };
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ deleted: false, reason: 'Text not found' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 17. move_block
+server.tool(
+  'move_block',
+  'Move a block to a new position in the document',
+  {
+    search: z.string().describe('Text in the block to move'),
+    to: z.union([z.number(), z.enum(['start', 'end'])]).describe('Target position: index number, "start", or "end"'),
+  },
+  async ({ search, to }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        for (const [node, path] of Node.nodes(editor)) {
+          if (!Text.isText(node)) continue;
+          if (node.text.includes(search)) {
+            const blockPath = [path[0]];
+            let targetPath;
+            if (to === 'start') {
+              targetPath = [0];
+            } else if (to === 'end') {
+              targetPath = [editor.children.length];
+            } else {
+              targetPath = [to];
+            }
+            Transforms.moveNodes(editor, { at: blockPath, to: targetPath });
+            return { content: [{ type: 'text', text: JSON.stringify({ moved: true, from: blockPath, to: targetPath }) }] };
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ moved: false, reason: 'Text not found' }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 18. list_blocks
+server.tool(
+  'list_blocks',
+  'List all blocks in the document with their index, type, and a text preview',
+  {},
+  async () => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      const root = getSharedRoot();
+      const nodes = deltaToJson(root);
+      const blocks = nodes.map((node, i) => {
+        const text = (node.children || []).map(c => c.text || '').join('');
+        return {
+          index: i,
+          type: node.type || 'p',
+          preview: text.slice(0, 80) + (text.length > 80 ? '...' : ''),
+        };
+      });
+      return { content: [{ type: 'text', text: JSON.stringify(blocks, null, 2) }] };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 19. get_document_outline
+server.tool(
+  'get_document_outline',
+  'Returns a hierarchical outline of the document based on headings (h1, h2, h3)',
+  {},
+  async () => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      const root = getSharedRoot();
+      const nodes = deltaToJson(root);
+      const headings = nodes
+        .map((node, i) => {
+          if (!['h1', 'h2', 'h3'].includes(node.type)) return null;
+          const text = (node.children || []).map(c => c.text || '').join('');
+          return { index: i, level: parseInt(node.type[1]), type: node.type, text };
+        })
+        .filter(Boolean);
+      return { content: [{ type: 'text', text: JSON.stringify(headings, null, 2) }] };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 20. clear_document
+server.tool(
+  'clear_document',
+  'Remove all content from the document, leaving a single empty paragraph',
+  {},
+  async () => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        // Remove all nodes
+        while (editor.children.length > 0) {
+          Transforms.removeNodes(editor, { at: [0] });
+        }
+        // Insert one empty paragraph
+        Transforms.insertNodes(editor, { type: 'p', children: [{ text: '' }] }, { at: [0] });
+        return { content: [{ type: 'text', text: JSON.stringify({ cleared: true }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 21. insert_table
+server.tool(
+  'insert_table',
+  'Insert a table into the document',
+  {
+    rows: z.number().describe('Number of rows (not counting header row)'),
+    cols: z.number().describe('Number of columns'),
+    headers: z.array(z.string()).optional().describe('Optional header row text for each column'),
+  },
+  async ({ rows, cols, headers }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: 'Error: No document connected. Use connect_document first.' }], isError: true };
+      }
+      return await withHeadlessEditor((editor) => {
+        const buildRow = (cellTexts, isHeader = false) => ({
+          type: 'tr',
+          children: cellTexts.map(t => ({
+            type: isHeader ? 'th' : 'td',
+            children: [{ type: 'p', children: [{ text: t }] }],
+          })),
+        });
+
+        const tableChildren = [];
+
+        // Header row
+        if (headers && headers.length > 0) {
+          const headerTexts = Array.from({ length: cols }, (_, i) => headers[i] || '');
+          tableChildren.push(buildRow(headerTexts, true));
+        }
+
+        // Data rows
+        for (let r = 0; r < rows; r++) {
+          const cellTexts = Array.from({ length: cols }, () => '');
+          tableChildren.push(buildRow(cellTexts, false));
+        }
+
+        const tableNode = {
+          type: 'table',
+          children: tableChildren,
+        };
+
+        Transforms.insertNodes(editor, tableNode, { at: [editor.children.length] });
+        return { content: [{ type: 'text', text: JSON.stringify({ inserted: true, rows, cols, hasHeaders: !!(headers && headers.length) }) }] };
+      });
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
   }
 );
 

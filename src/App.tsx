@@ -374,6 +374,13 @@ export default function App() {
     localStorage.setItem('draft-title', 'Untitled Document');
   }, []);
 
+  // Update document.title when title changes
+  useEffect(() => {
+    document.title = title && title !== 'Untitled Document'
+      ? `${title} — Draft`
+      : 'Draft';
+  }, [title]);
+
   // Listen for popstate (browser back/forward) to update documentId
   useEffect(() => {
     const handler = () => {

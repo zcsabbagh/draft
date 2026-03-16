@@ -31,23 +31,13 @@ export default function TimelineScrubber({
   const trackRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
-  if (snapshots.length < 2) {
-    return (
-      <div className="flex items-center gap-3 px-6 py-2 bg-cream-dark/50">
-        <span className="text-xs text-ink-lighter">
-          Edit history will appear as you write...
-        </span>
-      </div>
-    );
-  }
-
-  const currentIdx = activeIndex ?? snapshots.length - 1;
-  const maxIdx = snapshots.length - 1;
+  const maxIdx = snapshots.length > 1 ? snapshots.length - 1 : 0;
+  const currentIdx = activeIndex ?? maxIdx;
 
   const snapToNearest = useCallback(
     (clientX: number) => {
       const track = trackRef.current;
-      if (!track) return;
+      if (!track || maxIdx === 0) return;
       const rect = track.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const rawIdx = ratio * maxIdx;
@@ -77,6 +67,16 @@ export default function TimelineScrubber({
   const onPointerUp = useCallback(() => {
     isDragging.current = false;
   }, []);
+
+  if (snapshots.length < 2) {
+    return (
+      <div className="flex items-center gap-3 px-6 py-2 bg-cream-dark/50">
+        <span className="text-xs text-ink-lighter">
+          Edit history will appear as you write...
+        </span>
+      </div>
+    );
+  }
 
   const thumbPercent = (currentIdx / maxIdx) * 100;
 

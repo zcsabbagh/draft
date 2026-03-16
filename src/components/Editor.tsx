@@ -1,4 +1,33 @@
-import { useCallback, useRef, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
+
+// Error boundary that auto-recovers from Yjs/Slate rendering crashes
+class EditorErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError?: () => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn('[Editor] Caught render error, recovering:', error.message);
+    // Auto-recover after a brief delay
+    setTimeout(() => this.setState({ hasError: false }), 100);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center h-full text-sm text-ink-lighter">
+          Syncing...
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   Plate,
   PlateContent,
@@ -688,29 +717,6 @@ export default function Editor({
     clickRef.current = onCommentClick;
   }, [comments, activeCommentId, onCommentClick]);
 
-  // Build the Yjs plugin config only when collab is enabled
-  const yjsPluginConfig = useCollab
-    ? YjsPlugin.configure({
-        options: {
-          cursors: {
-            data: {
-              name: 'You',
-              color: '#C66140',
-            },
-          },
-          providers: [
-            {
-              type: 'hocuspocus' as const,
-              options: {
-                name: documentId,
-                url: collabUrl!,
-              },
-            },
-          ],
-        },
-      })
-    : null;
-
   const editor = usePlateEditor(
     {
       plugins: [
@@ -722,9 +728,19 @@ export default function Editor({
         TablePlugin,
         CitationLinkPlugin,
         PageBreakPlugin,
-        ...(yjsPluginConfig ? [yjsPluginConfig] : []),
+        ...(useCollab ? [YjsPlugin.configure({
+          options: {
+            cursors: {
+              data: { name: 'You', color: '#C66140' },
+            },
+            providers: [{
+              type: 'hocuspocus' as const,
+              options: { name: documentId, url: collabUrl! },
+            }],
+          },
+        })] : []),
       ],
-      ...(useCollab ? { skipInitialization: true } : {}),
+      skipInitialization: useCollab,
       override: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         components: {
@@ -841,32 +857,28 @@ export default function Editor({
     };
   }, [editor, externalEditorRef]);
 
-  // Initialize Yjs collaboration when enabled
-  const [yjsReady, setYjsReady] = useState(!useCollab); // true immediately if no collab
+  // Initialize Yjs: connect to Hocuspocus and set initial value if doc is empty
+  const [yjsReady, setYjsReady] = useState(!useCollab);
   useEffect(() => {
     if (!useCollab) return;
     let destroyed = false;
 
-    const init = async () => {
+    (async () => {
       try {
         await editor.getApi(YjsPlugin).yjs.init({
           id: documentId,
+          autoConnect: true,
           value: (initialValue as never) || [{ type: 'p', children: [{ text: '' }] }],
         });
-        if (!destroyed) setYjsReady(true);
       } catch (err) {
-        console.error('[Yjs] Failed to initialize:', err);
-        if (!destroyed) setYjsReady(true); // show editor anyway
+        console.warn('[Yjs] init:', (err as Error).message);
       }
-    };
-
-    init();
+      if (!destroyed) setYjsReady(true);
+    })();
 
     return () => {
       destroyed = true;
-      try {
-        editor.getApi(YjsPlugin).yjs.destroy();
-      } catch { /* ignore */ }
+      try { editor.getApi(YjsPlugin).yjs.destroy(); } catch { /* ignore */ }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useCollab, documentId]);
@@ -877,6 +889,8 @@ export default function Editor({
   const decorate = useCallback(
     ({ entry: [node, path] }: { editor: unknown; entry: [{ text?: string }, number[]] }) => {
       if (!node.text || typeof node.text !== 'string') return [];
+
+      try {
 
       const ranges: Array<Record<string, unknown>> = [];
       const text = node.text;
@@ -930,6 +944,10 @@ export default function Editor({
       }
 
       return ranges;
+      } catch {
+        // Yjs remote edits can invalidate paths mid-decorate — safe to skip
+        return [];
+      }
     },
     []
   );
@@ -1146,6 +1164,18 @@ export default function Editor({
     }
   }, [editor]);
 
+  // Wrap onChange to catch errors from Yjs remote updates
+  const safeHandleChange = useCallback(
+    (args: { value: unknown[] }) => {
+      try {
+        handleChange(args);
+      } catch {
+        // Yjs remote edits can cause transient errors during reconciliation
+      }
+    },
+    [handleChange]
+  );
+
   if (!yjsReady) {
     return (
       <div className="flex items-center justify-center h-full text-sm text-ink-lighter gap-2">
@@ -1159,9 +1189,10 @@ export default function Editor({
   }
 
   return (
+    <EditorErrorBoundary>
     <Plate
       editor={editor}
-      onChange={handleChange}
+      onChange={safeHandleChange}
       decorate={decorate as never}
       renderLeaf={renderLeaf as never}
       readOnly={readOnly}
@@ -1252,7 +1283,7 @@ export default function Editor({
               }
             }}
           />
-          {useCollab && <CursorOverlay />}
+          {/* CursorOverlay temporarily disabled for debugging */}
           {citations.length > 0 && (
             <div className="page-content !pt-0 !min-h-0" style={{ fontFamily }}>
               <hr className="border-border mb-6" />
@@ -1279,5 +1310,6 @@ export default function Editor({
         />
       )}
     </Plate>
+    </EditorErrorBoundary>
   );
 }
