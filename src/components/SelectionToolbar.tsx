@@ -1,19 +1,35 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+const TRANSLATE_LANGUAGES = [
+  { code: 'Spanish', label: 'Spanish' },
+  { code: 'French', label: 'French' },
+  { code: 'German', label: 'German' },
+  { code: 'Chinese', label: 'Chinese' },
+  { code: 'Japanese', label: 'Japanese' },
+  { code: 'Arabic', label: 'Arabic' },
+  { code: 'Portuguese', label: 'Portuguese' },
+  { code: 'Korean', label: 'Korean' },
+  { code: 'Italian', label: 'Italian' },
+  { code: 'Hindi', label: 'Hindi' },
+];
+
 interface SelectionToolbarProps {
   containerRef: React.RefObject<HTMLElement | null>;
   onEdit: (selectedText: string, position: { top: number; left: number }) => void;
   onCite: (selectedText: string) => void;
   onFeedback?: (selectedText: string) => void;
+  onTranslate?: (selectedText: string, targetLanguage: string) => Promise<void>;
   disabled?: boolean;
 }
 
-export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedback, disabled }: SelectionToolbarProps) {
+export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedback, onTranslate, disabled }: SelectionToolbarProps) {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [selectedText, setSelectedText] = useState('');
   const [citing, setCiting] = useState(false);
   const [feedbacking, setFeedbacking] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translateMenuOpen, setTranslateMenuOpen] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const hideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -155,6 +171,50 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
             </svg>
             {feedbacking ? 'Reviewing...' : 'Feedback'}
           </button>
+        </>
+      )}
+      {onTranslate && (
+        <>
+          <div className="w-px h-4 bg-cream/20" />
+          <div className="relative">
+            <button
+              onClick={() => setTranslateMenuOpen((v) => !v)}
+              disabled={translating}
+              className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors disabled:opacity-50"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M1 2h5M3.5 2v-1M2 2c0 2 1.5 4 3.5 4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M4.5 2c0 1.5-1 3-2.5 4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+                <path d="M6.5 11L8.5 5.5L10.5 11M7 9.5h3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {translating ? '...' : 'Translate'}
+            </button>
+            {translateMenuOpen && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-36 bg-cream rounded-lg border border-border shadow-lg py-1 animate-dropdown-open max-h-52 overflow-y-auto"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {TRANSLATE_LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.code}
+                    onClick={async () => {
+                      setTranslateMenuOpen(false);
+                      setTranslating(true);
+                      try {
+                        await onTranslate(selectedText, lang.code);
+                      } finally {
+                        setTranslating(false);
+                        setVisible(false);
+                      }
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-cream-dark transition-colors"
+                  >
+                    {lang.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

@@ -1268,6 +1268,19 @@ export default function Editor({
               }
             }}
             onFeedback={onFeedbackSelection}
+            onTranslate={async (text, lang) => {
+              const { translateText } = await import('../lib/api');
+              const translated = await translateText(text, lang);
+              // Replace selected text with translation
+              const val = (editor as AnyEditor).children;
+              const serialized = JSON.stringify(val);
+              const origEscaped = JSON.stringify(text).slice(1, -1);
+              const transEscaped = JSON.stringify(translated).slice(1, -1);
+              const updated = JSON.parse(serialized.replace(origEscaped, transEscaped));
+              (editor as AnyEditor).children = updated;
+              (editor as AnyEditor).onChange();
+              onChange(updated);
+            }}
           />
         )}
         {editState && (

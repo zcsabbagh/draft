@@ -1,6 +1,19 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { proposeEdit, chatAboutEdit } from '../lib/api';
+import { proposeEdit, chatAboutEdit, translateText } from '../lib/api';
 import type { EditProposal, ChatMessage } from '../lib/types';
+
+const TRANSLATE_LANGUAGES = [
+  { code: 'Spanish', label: 'Spanish' },
+  { code: 'French', label: 'French' },
+  { code: 'German', label: 'German' },
+  { code: 'Chinese', label: 'Chinese' },
+  { code: 'Japanese', label: 'Japanese' },
+  { code: 'Arabic', label: 'Arabic' },
+  { code: 'Portuguese', label: 'Portuguese' },
+  { code: 'Korean', label: 'Korean' },
+  { code: 'Italian', label: 'Italian' },
+  { code: 'Hindi', label: 'Hindi' },
+];
 
 interface InlineEditPanelProps {
   selectedText: string;
@@ -31,19 +44,26 @@ export default function InlineEditPanel({
   const [chatInput, setChatInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTranslateMenu, setShowTranslateMenu] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (!showTranslateMenu) inputRef.current?.focus();
+  }, [showTranslateMenu]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onDismiss();
+      if (e.key === 'Escape') {
+        if (showTranslateMenu) {
+          setShowTranslateMenu(false);
+        } else {
+          onDismiss();
+        }
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onDismiss]);
+  }, [onDismiss, showTranslateMenu]);
 
   const handleSubmitInstruction = useCallback(async () => {
     if (!instruction.trim() || loading) return;
@@ -58,7 +78,6 @@ export default function InlineEditPanel({
         { role: 'user', content: instruction.trim() },
         { role: 'assistant', content: result.explanation },
       ]);
-      // Apply the proposed edit inline in the document
       onPropose(result.originalText, result.proposedText);
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
@@ -91,7 +110,6 @@ export default function InlineEditPanel({
           ...prev,
           { role: 'assistant', content: result.proposal.explanation },
         ]);
-        // Apply updated proposal inline
         onPropose(result.proposal.originalText, result.proposal.proposedText);
       } else {
         setMessages((prev) => [
@@ -105,6 +123,31 @@ export default function InlineEditPanel({
       setLoading(false);
     }
   }, [chatInput, loading, proposal, messages, documentText, selectedText, onPropose]);
+
+  const handleTranslate = useCallback(async (targetLanguage: string) => {
+    setShowTranslateMenu(false);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const translated = await translateText(selectedText, targetLanguage);
+      setProposal({
+        id: `translate-${Date.now()}`,
+        originalText: selectedText,
+        proposedText: translated,
+        explanation: `Translated to ${targetLanguage}`,
+      });
+      setMessages([
+        { role: 'user', content: `Translate to ${targetLanguage}` },
+        { role: 'assistant', content: `Translated to ${targetLanguage}` },
+      ]);
+      onPropose(selectedText, translated);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedText, onPropose]);
 
   if (!position) return null;
 
@@ -152,6 +195,23 @@ export default function InlineEditPanel({
         </div>
       )}
 
+      {/* Translate language picker — shows when user clicks Translate */}
+      {showTranslateMenu && (
+        <div className="px-1 py-1 border-b border-border">
+          <div className="flex flex-wrap gap-1">
+            {TRANSLATE_LANGUAGES.map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => handleTranslate(lang.code)}
+                className="text-xs px-2.5 py-1 rounded-md text-ink hover:bg-cream-dark transition-colors"
+              >
+                {lang.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input bar */}
       <form
         onSubmit={(e) => {
@@ -170,25 +230,42 @@ export default function InlineEditPanel({
           onChange={(e) => hasProposal ? setChatInput(e.target.value) : setInstruction(e.target.value)}
           placeholder={hasProposal ? 'Iterate on this edit...' : 'Describe the edit you want...'}
           className="flex-1 text-sm bg-transparent focus:outline-none text-ink placeholder:text-ink-lighter"
-          disabled={loading}
+          disabled={loading || showTranslateMenu}
         />
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Translate quick-action — only before a proposal */}
+          {!hasProposal && !loading && (
+            <button
+              type="button"
+              onClick={() => setShowTranslateMenu((v) => !v)}
+              className={`transition-colors ${showTranslateMenu ? 'text-ink' : 'text-ink-lighter hover:text-ink'}`}
+              title="Translate"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 3h6M5 3V2M3.5 3c0 2.5 1.5 5 3.5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M6 3c0 2-1 4-3 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <path d="M8.5 14L11 7.5L13.5 14M9 12h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
           {loading ? (
             <svg className="animate-spin h-3.5 w-3.5 text-ink-lighter" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
           ) : (
-            <button
-              type="submit"
-              disabled={!(hasProposal ? chatInput.trim() : instruction.trim())}
-              className="text-ink-lighter hover:text-ink disabled:opacity-30 transition-colors"
-              title="Submit"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+            !showTranslateMenu && (
+              <button
+                type="submit"
+                disabled={!(hasProposal ? chatInput.trim() : instruction.trim())}
+                className="text-ink-lighter hover:text-ink disabled:opacity-30 transition-colors"
+                title="Submit"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )
           )}
           <button
             type="button"

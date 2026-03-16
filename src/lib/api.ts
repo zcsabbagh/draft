@@ -204,6 +204,38 @@ export async function getCitation(selectedText: string): Promise<Citation> {
   return citation;
 }
 
+// ── Translation ──
+
+const TRANSLATE_SYSTEM_PROMPT = `You are a professional translator. Translate the given text to the target language. Preserve the tone, style, and formatting of the original. Return ONLY the translated text — no explanations, no quotes, no labels.`;
+
+export async function translateText(
+  text: string,
+  targetLanguage: string
+): Promise<string> {
+  const response = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [{
+        role: 'user',
+        content: `Translate the following text to ${targetLanguage}:\n\n${text}`,
+      }],
+      system: TRANSLATE_SYSTEM_PROMPT,
+      max_tokens: 2048,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`API error: ${err}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+
+// ── Edit proposals ──
+
 const EDIT_SYSTEM_PROMPT = `You are a surgical text editor. The user will give you a selected passage from their document and an instruction for how to edit it. You must return ONLY a JSON object with:
 - "proposedText": the rewritten version of the selected text (ONLY the selected portion, preserving the same scope)
 - "explanation": a brief one-sentence explanation of what you changed
