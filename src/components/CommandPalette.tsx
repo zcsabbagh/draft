@@ -11,6 +11,8 @@ interface CommandPaletteProps {
   onExportPDF: () => void;
   onRequestFeedback: () => void;
   onOpenImportDialog: () => void;
+  onNewDocument?: () => void;
+  onShare?: () => void;
 }
 
 interface CommandItem {
@@ -203,6 +205,8 @@ function useCommands(
   onRequestFeedback: () => void,
   onOpenImportDialog: () => void,
   onClose: () => void,
+  onNewDocument?: () => void,
+  onShare?: () => void,
 ): CommandItem[] {
   const run = useCallback(
     (fn: () => void) => {
@@ -381,6 +385,8 @@ function useCommands(
     { id: 'export-pdf', label: 'Export PDF', icon: icons.pdf, action: run(onExportPDF), group: 'Document' },
     { id: 'request-feedback', label: 'Request Feedback', icon: icons.feedback, action: run(onRequestFeedback), group: 'Document' },
     { id: 'import-gdocs', label: 'Import from Google Docs', icon: icons.import, action: run(onOpenImportDialog), group: 'Document' },
+    ...(onNewDocument ? [{ id: 'new-document', label: 'New Document', icon: icons.import, action: run(onNewDocument), group: 'Document' }] : []),
+    ...(onShare ? [{ id: 'share', label: 'Copy Share Link', icon: icons.feedback, action: run(onShare), group: 'Document' }] : []),
   ];
 }
 
@@ -391,9 +397,11 @@ export default function CommandPalette({
   onExportPDF,
   onRequestFeedback,
   onOpenImportDialog,
+  onNewDocument,
+  onShare,
 }: CommandPaletteProps) {
   const backdropRef = useRef<HTMLDivElement>(null);
-  const commands = useCommands(editor, onExportPDF, onRequestFeedback, onOpenImportDialog, onClose);
+  const commands = useCommands(editor, onExportPDF, onRequestFeedback, onOpenImportDialog, onClose, onNewDocument, onShare);
 
   // Close on Escape
   useEffect(() => {

@@ -44,8 +44,26 @@ const INITIAL_VALUE = [
   { type: 'p', children: [{ text: 'It is widely acknowledged that AI regulation is necessary. However, the current regulatory frameworks are inadequate for addressing the rapid pace of technological change. Without significant reform, we risk falling behind other nations in this critical area.' }] },
 ];
 
+function getDocumentIdFromUrl(): string {
+  const path = window.location.pathname;
+  const match = path.match(/^\/d\/(.+)$/);
+  if (match) return decodeURIComponent(match[1]);
+  return import.meta.env.VITE_COLLAB_DOC || 'draft-default';
+}
+
+function generateDocumentId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < 10; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
+}
+
 export default function App() {
+  const [documentId, setDocumentId] = useState(getDocumentIdFromUrl);
   const [title, setTitle] = useState(() => localStorage.getItem('draft-title') || 'Untitled Document');
+  const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
   const [comments, setComments] = useState<FeedbackComment[]>([]);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Record<string, CommentThread>>({});
@@ -330,6 +348,40 @@ export default function App() {
     return chatAboutDocumentStream(docText, message, history, onChunk);
   }, []);
 
+  const handleShare = useCallback(() => {
+    const baseUrl = window.location.origin;
+    const shareUrl = `${baseUrl}/d/${encodeURIComponent(documentId)}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setShareState('copied');
+      setTimeout(() => setShareState('idle'), 1600);
+    });
+  }, [documentId]);
+
+  const handleNewDocument = useCallback(() => {
+    const newId = generateDocumentId();
+    window.history.pushState({}, '', `/d/${newId}`);
+    setDocumentId(newId);
+    setEditorInitialValue(INITIAL_VALUE);
+    editorValueRef.current = INITIAL_VALUE;
+    setEditorKey((k) => k + 1);
+    setComments([]);
+    setActiveCommentId(null);
+    setThreads({});
+    setTitle('Untitled Document');
+    localStorage.setItem('draft-title', 'Untitled Document');
+  }, []);
+
+  // Listen for popstate (browser back/forward) to update documentId
+  useEffect(() => {
+    const handler = () => {
+      const newId = getDocumentIdFromUrl();
+      setDocumentId(newId);
+      setEditorKey((k) => k + 1);
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
+
   // Cmd+, toggles sidebar
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -484,6 +536,32 @@ export default function App() {
             )}
           </div>
           <button
+            onClick={handleNewDocument}
+            className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors flex items-center gap-1.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+            New
+          </button>
+          <button
+            onClick={handleShare}
+            className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors flex items-center gap-1.5 relative overflow-hidden min-w-[85px]"
+          >
+            <span className={`inline-flex items-center gap-1.5 transition-all duration-300 ${shareState === 'copied' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M4.5 8.5a2 2 0 1 1 0-3l5 2.5a2 2 0 1 1 0 1l-5-2.5Z" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M4.5 5.5a2 2 0 1 1 0 3l5-2.5a2 2 0 1 1 0-1l-5 2.5Z" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+              Share
+            </span>
+            {shareState === 'copied' && (
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-medium">
+                Copied!
+              </span>
+            )}
+          </button>
+          <button
             onClick={handleRequestFeedback}
             disabled={isLoading}
             className="text-sm px-4 py-1.5 rounded-lg bg-ink text-cream font-medium hover:bg-ink-light transition-colors disabled:opacity-50"
@@ -557,7 +635,7 @@ export default function App() {
               onFeedbackSelection={handleFeedbackSelection}
               editorRef={plateEditorRef}
               collabUrl={import.meta.env.VITE_COLLAB_URL || undefined}
-              documentId={import.meta.env.VITE_COLLAB_DOC || 'draft-default'}
+              documentId={documentId}
             />
           )}
         </div>
@@ -605,6 +683,8 @@ export default function App() {
         onExportPDF={handleExportPDF}
         onRequestFeedback={handleRequestFeedback}
         onOpenImportDialog={() => setImportDialogOpen(true)}
+        onNewDocument={handleNewDocument}
+        onShare={handleShare}
       />
     </div>
   );

@@ -275,6 +275,19 @@ function claudeProxy(): Plugin {
           return;
         }
 
+        // Budget check against collab server
+        try {
+          const budgetRes = await fetch('http://localhost:8888/api/usage/check');
+          if (budgetRes.ok) {
+            const budget = await budgetRes.json() as { allowed: boolean; total_usd: number; limit_usd: number };
+            if (!budget.allowed) {
+              res.statusCode = 429;
+              res.end(JSON.stringify({ error: `Budget limit reached ($${budget.total_usd.toFixed(2)} / $${budget.limit_usd.toFixed(2)})` }));
+              return;
+            }
+          }
+        } catch { /* collab server not running — allow */ }
+
         let body = '';
         req.on('data', (chunk: Buffer) => {
           body += chunk.toString();
@@ -329,6 +342,19 @@ function claudeProxy(): Plugin {
               res.end();
             } else {
               const data = await response.text();
+              // Log usage to collab server
+              if (response.ok) {
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.usage) {
+                    fetch('http://localhost:8888/api/usage/log', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.ADMIN_SECRET || 'change-me-in-production'}` },
+                      body: JSON.stringify({ input_tokens: parsed.usage.input_tokens, output_tokens: parsed.usage.output_tokens, model: 'claude-sonnet-4-20250514' }),
+                    }).catch(() => {});
+                  }
+                } catch { /* ignore */ }
+              }
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = response.status;
               res.end(data);
