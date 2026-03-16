@@ -234,6 +234,8 @@ body {
   border-radius: 4px;
   cursor: pointer;
   display: block;
+  outline: 1px solid rgba(0, 0, 0, 0.06);
+  outline-offset: -1px;
 }
 
 .slate-image-wrapper img:hover {
@@ -409,6 +411,13 @@ body {
   line-height: 1.7;
   color: var(--color-ink);
   outline: none;
+  text-wrap: pretty;
+}
+
+[data-slate-editor] h1,
+[data-slate-editor] h2,
+[data-slate-editor] h3 {
+  text-wrap: balance;
 }
 
 @media (max-width: 767px) {
@@ -610,6 +619,14 @@ input[type="range"]::-webkit-slider-thumb {
 .animate-slide-up-fade { animation: slide-up-fade 150ms cubic-bezier(0, 0, 0.2, 1) both; }
 .animate-tab-fade-in { animation: tab-fade-in 150ms cubic-bezier(0, 0, 0.2, 1) both; }
 
+/* ── Scale on press — tactile button feedback ── */
+.press-scale {
+  transition: transform 100ms cubic-bezier(0.2, 0, 0, 1);
+}
+.press-scale:active {
+  transform: scale(0.96);
+}
+
 /* ── Reviewer personas ── */
 
 .comment-card {
@@ -619,7 +636,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .reviewer-avatar {
-  transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .comment-card:hover .reviewer-avatar {
@@ -763,7 +780,7 @@ input[type="range"]::-webkit-slider-thumb {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   color: #2C2C2C;

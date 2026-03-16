@@ -128,7 +128,7 @@ function ToolbarButton({
         onMouseDown(e);
       }}
       title={title}
-      className={`px-2 py-1 text-xs rounded transition-colors ${
+      className={`relative px-2 py-2 text-xs rounded transition-colors press-scale before:absolute before:inset-x-[-4px] before:inset-y-[-4px] before:content-[''] ${
         active
           ? 'bg-ink text-cream'
           : 'text-ink-light hover:bg-cream-dark hover:text-ink'

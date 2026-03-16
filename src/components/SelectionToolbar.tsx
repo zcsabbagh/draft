@@ -137,7 +137,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
     >
       <button
         onClick={handleEdit}
-        className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors"
+        className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors press-scale"
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M8.5 1.5L10.5 3.5L4 10H2V8L8.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
@@ -148,7 +148,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
       <button
         onClick={handleCite}
         disabled={citing}
-        className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors press-scale disabled:opacity-50"
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M2 3C2 2.44772 2.44772 2 3 2H5L6 3H9C9.55228 3 10 3.44772 10 4V9C10 9.55228 9.55228 10 9 10H3C2.44772 10 2 9.55228 2 9V3Z" stroke="currentColor" strokeWidth="1.2" />
@@ -162,7 +162,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
           <button
             onClick={handleFeedback}
             disabled={feedbacking}
-            className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors press-scale disabled:opacity-50"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M1.5 2.5a1 1 0 011-1h7a1 1 0 011 1v5a1 1 0 01-1 1H4L1.5 11V2.5Z" stroke="currentColor" strokeWidth="1.2" />
@@ -180,7 +180,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
             <button
               onClick={() => setTranslateMenuOpen((v) => !v)}
               disabled={translating}
-              className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors press-scale disabled:opacity-50"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M1 2h5M3.5 2v-1M2 2c0 2 1.5 4 3.5 4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -191,7 +191,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
             </button>
             {translateMenuOpen && (
               <div
-                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-36 bg-cream rounded-lg border border-border shadow-lg py-1 animate-dropdown-open max-h-52 overflow-y-auto"
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-36 bg-cream rounded-lg border border-border shadow-lg py-1 px-1 animate-dropdown-open max-h-52 overflow-y-auto"
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 {TRANSLATE_LANGUAGES.map((lang) => (
@@ -207,7 +207,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
                         setVisible(false);
                       }
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-cream-dark transition-colors"
+                    className="w-full text-left px-2 py-1.5 text-xs text-ink hover:bg-cream-dark transition-colors rounded"
                   >
                     {lang.label}
                   </button>

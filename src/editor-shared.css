@@ -82,6 +82,13 @@
   line-height: 1.7;
   color: var(--color-ink);
   outline: none;
+  text-wrap: pretty;
+}
+
+[data-slate-editor] h1,
+[data-slate-editor] h2,
+[data-slate-editor] h3 {
+  text-wrap: balance;
 }
 
 [data-slate-editor] [data-slate-placeholder] {
@@ -129,6 +136,8 @@
   border-radius: 4px;
   display: block;
   cursor: default;
+  outline: 1px solid rgba(0, 0, 0, 0.06);
+  outline-offset: -1px;
   transition: box-shadow 0.15s ease;
 }
 

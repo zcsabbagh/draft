@@ -520,9 +520,9 @@ export default function App() {
               onMouseLeave={() => setImportMenuOpen(false)}
             >
               <button
-                className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors flex items-center gap-1.5 relative overflow-hidden min-w-[90px]"
+                className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5 relative overflow-hidden min-w-[90px]"
               >
-                <span className={`inline-flex items-center gap-1.5 transition-all duration-300 ${importState === 'success' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+                <span className={`inline-flex items-center gap-1.5 transition-[opacity,transform] duration-300 ${importState === 'success' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                     <path d="M7 1v8M3.5 5.5L7 9l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                     <path d="M2 12h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -539,10 +539,10 @@ export default function App() {
               </button>
               {importMenuOpen && (
                 <div className="absolute right-0 top-full pt-1 z-50">
-                  <div className="w-56 bg-cream rounded-lg border border-border shadow-lg py-1">
+                  <div className="w-56 bg-cream rounded-lg border border-border shadow-lg py-1 px-1">
                   <button
                     onClick={() => { setImportMenuOpen(false); setImportDialogOpen(true); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3"
+                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
                   >
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
                       <path d="M3.5 1.5h7.086a1 1 0 0 1 .707.293l3.414 3.414a1 1 0 0 1 .293.707V15a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 15V3a1.5 1.5 0 0 1 1.5-1.5z" fill="#4285F4" />
@@ -555,7 +555,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => { setImportMenuOpen(false); setImportNotionDialogOpen(true); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3"
+                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
                   >
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
                       <rect x="2" y="2" width="14" height="14" rx="2" fill="#000" />
@@ -576,7 +576,7 @@ export default function App() {
               onMouseLeave={() => setExportMenuOpen(false)}
             >
               <button
-                className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors flex items-center gap-1.5"
+                className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M7 9V1M3.5 4.5L7 1l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
@@ -586,10 +586,10 @@ export default function App() {
               </button>
               {exportMenuOpen && (
                 <div className="absolute right-0 top-full pt-1 z-50">
-                  <div className="w-44 bg-cream rounded-lg border border-border shadow-lg py-1">
+                  <div className="w-44 bg-cream rounded-lg border border-border shadow-lg py-1 px-1">
                   <button
                     onClick={() => { setExportMenuOpen(false); handleExportPDF(); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3"
+                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
                       <rect x="2" y="1" width="12" height="14" rx="1.5" fill="#E53E3E" />
@@ -603,7 +603,7 @@ export default function App() {
                       // Placeholder — .docx export not yet implemented
                       alert('DOCX export coming soon');
                     }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3"
+                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
                       <rect x="2" y="1" width="12" height="14" rx="1.5" fill="#2B579A" />
@@ -617,7 +617,7 @@ export default function App() {
             </div>
             <button
               onClick={handleNewDocument}
-              className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors flex items-center gap-1.5"
+              className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -626,9 +626,9 @@ export default function App() {
             </button>
             <button
               onClick={handleShare}
-              className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors flex items-center gap-1.5 relative overflow-hidden min-w-[85px]"
+              className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5 relative overflow-hidden min-w-[85px]"
             >
-              <span className={`inline-flex items-center gap-1.5 transition-all duration-300 ${shareState === 'copied' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+              <span className={`inline-flex items-center gap-1.5 transition-[opacity,transform] duration-300 ${shareState === 'copied' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M4.5 8.5a2 2 0 1 1 0-3l5 2.5a2 2 0 1 1 0 1l-5-2.5Z" stroke="currentColor" strokeWidth="1.2" />
                   <path d="M4.5 5.5a2 2 0 1 1 0 3l5-2.5a2 2 0 1 1 0-1l-5 2.5Z" stroke="currentColor" strokeWidth="1.2" />
@@ -644,7 +644,7 @@ export default function App() {
             <button
               onClick={handleRequestFeedback}
               disabled={isLoading}
-              className="text-sm px-4 py-1.5 rounded-lg bg-ink text-cream font-medium hover:bg-ink-light transition-colors disabled:opacity-50"
+              className="text-sm px-4 py-1.5 rounded-lg bg-ink text-cream font-medium hover:bg-ink-light transition-colors press-scale disabled:opacity-50"
             >
               {isLoading ? 'Reading...' : 'Request Feedback'}
             </button>
@@ -674,7 +674,7 @@ export default function App() {
             <button
               onClick={handleRequestFeedback}
               disabled={isLoading}
-              className="flex items-center justify-center w-9 h-9 rounded-full bg-ink text-cream disabled:opacity-50 transition-colors"
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-ink text-cream disabled:opacity-50 transition-colors press-scale"
               title="Request Feedback"
             >
               {isLoading ? (
@@ -712,12 +712,12 @@ export default function App() {
               </button>
               {mobileMenuOpen && (
                 <div className="absolute right-0 top-full pt-1 z-50">
-                  <div className="w-48 bg-cream rounded-lg border border-border shadow-lg py-1 animate-dropdown-open">
-                    <button onClick={() => { setMobileMenuOpen(false); handleNewDocument(); }} className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors">New Document</button>
-                    <button onClick={() => { setMobileMenuOpen(false); handleShare(); }} className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors">Share</button>
-                    <button onClick={() => { setMobileMenuOpen(false); setImportDialogOpen(true); }} className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors">Import from Google Docs</button>
-                    <button onClick={() => { setMobileMenuOpen(false); setImportNotionDialogOpen(true); }} className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors">Import from Notion</button>
-                    <button onClick={() => { setMobileMenuOpen(false); handleExportPDF(); }} className="w-full text-left px-4 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors">Export PDF</button>
+                  <div className="w-48 bg-cream rounded-lg border border-border shadow-lg py-1 px-1 animate-dropdown-open">
+                    <button onClick={() => { setMobileMenuOpen(false); handleNewDocument(); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">New Document</button>
+                    <button onClick={() => { setMobileMenuOpen(false); handleShare(); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">Share</button>
+                    <button onClick={() => { setMobileMenuOpen(false); setImportDialogOpen(true); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">Import from Google Docs</button>
+                    <button onClick={() => { setMobileMenuOpen(false); setImportNotionDialogOpen(true); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">Import from Notion</button>
+                    <button onClick={() => { setMobileMenuOpen(false); handleExportPDF(); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">Export PDF</button>
                   </div>
                 </div>
               )}
@@ -738,7 +738,7 @@ export default function App() {
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden relative">
         {/* Editor panel — always full width on mobile */}
-        <div className={`${!isMobile && sidebarOpen ? 'w-[70%]' : 'w-full'} flex flex-col overflow-hidden transition-all duration-300 relative`}>
+        <div className={`${!isMobile && sidebarOpen ? 'w-[70%]' : 'w-full'} flex flex-col overflow-hidden transition-[width] duration-300 relative`}>
           {/* Main editor — always mounted to avoid Yjs remount crashes */}
           <div style={{ display: isViewingHistory ? 'none' : undefined }} className="flex flex-col flex-1 overflow-hidden">
             <Editor
@@ -818,7 +818,7 @@ export default function App() {
           )
         ) : (
           <div
-            className={`${sidebarOpen ? 'w-[30%] m-2 ml-0' : 'w-0 m-0'} overflow-hidden transition-all duration-300 rounded-xl`}
+            className={`${sidebarOpen ? 'w-[30%] m-2 ml-0' : 'w-0 m-0'} overflow-hidden transition-[width,margin] duration-300 rounded-xl`}
             style={{ backgroundColor: '#F0EEE6' }}
           >
             <ChatPanel

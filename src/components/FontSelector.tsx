@@ -46,7 +46,7 @@ export default function FontSelector({ selectedFont, onFontChange }: FontSelecto
           setOpen((v) => !v);
         }}
         title="Change font"
-        className="flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors text-ink-light hover:bg-cream-dark hover:text-ink min-w-[100px]"
+        className="flex items-center gap-1 px-2 py-2 text-xs rounded transition-colors text-ink-light hover:bg-cream-dark hover:text-ink min-w-[100px]"
         style={{ fontFamily: selected.family }}
       >
         <span className="truncate">{selected.name}</span>
@@ -56,7 +56,7 @@ export default function FontSelector({ selectedFont, onFontChange }: FontSelecto
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-52 max-h-72 overflow-y-auto bg-[#FAFAF8] border border-[#E5E5E0] rounded-lg shadow-lg z-50 py-1 custom-scrollbar animate-dropdown-open">
+        <div className="absolute top-full left-0 mt-1 w-52 max-h-72 overflow-y-auto bg-[#FAFAF8] border border-[#E5E5E0] rounded-lg shadow-lg z-50 py-1 px-1 custom-scrollbar animate-dropdown-open">
           {grouped.map((group) => (
             <div key={group.label}>
               <div className="px-3 py-1.5 text-[10px] font-semibold text-ink-lighter uppercase tracking-wider select-none">
@@ -96,7 +96,7 @@ function FontItem({
         e.preventDefault();
         onClick();
       }}
-      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
+      className={`w-full text-left px-2 py-1.5 text-xs flex items-center justify-between transition-colors rounded ${
         isSelected
           ? 'bg-cream-dark text-ink'
           : 'text-ink-light hover:bg-cream-dark hover:text-ink'
