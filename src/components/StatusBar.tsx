@@ -34,10 +34,13 @@ interface StatusBarProps {
 
 const PAGE_HEIGHT = 1056;
 
+// Hoisted regex — avoids re-creation per call (js-hoist-regexp)
+const WHITESPACE_RE = /\s+/;
+
 function countWords(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
+  return trimmed.split(WHITESPACE_RE).length;
 }
 
 export default function StatusBar({ editorRef, getDocumentText, getSelectedText }: StatusBarProps) {
@@ -151,7 +154,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     };
   }, []);
 
-  // ── Speech-to-text (Web Speech API) ──
+  // ── Speech-to-text (Web Speech API + Groq fallback) ──
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const plateEditor = useEditorRef() as any;
   const [recording, setRecording] = useState(false);
@@ -162,9 +165,71 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
   const networkRetriesRef = useRef(0);
   const wantRecordingRef = useRef(false);
 
+  // Groq fallback state
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const groqModeRef = useRef(false);
+
+  const startGroqRecording = useCallback(async () => {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setMicError('Microphone access denied');
+      setTimeout(() => setMicError(null), 3000);
+      return;
+    }
+
+    groqModeRef.current = true;
+    audioChunksRef.current = [];
+
+    const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      groqModeRef.current = false;
+      if (audioChunksRef.current.length === 0) return;
+      const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+      audioChunksRef.current = [];
+      const formData = new FormData();
+      formData.append('file', blob, 'audio.webm');
+      formData.append('model', 'whisper-large-v3-turbo');
+      formData.append('language', 'en');
+      try {
+        const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.text && plateEditor) {
+          try { plateEditor.insertText(data.text); } catch { /* ignore */ }
+        }
+      } catch { /* ignore */ }
+    };
+
+    recorder.start();
+    setRecording(true);
+    setMicError(null);
+  }, [plateEditor]);
+
+  const stopGroqRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  }, []);
+
   const startRecognition = useCallback(() => {
     const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionCtor) return;
+    if (!SpeechRecognitionCtor) {
+      // No WebSpeech — fall back to Groq
+      startGroqRecording();
+      return;
+    }
 
     const recognition = new SpeechRecognitionCtor();
     recognition.continuous = true;
@@ -206,14 +271,15 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
         return;
       }
 
-      // Fatal error
-      const messages: Record<string, string> = {
-        network: 'Cannot reach speech service — try Chrome with internet',
-        'not-allowed': 'Microphone access denied',
-        'audio-capture': 'No microphone found',
-        'service-not-allowed': 'Speech API not available over HTTP',
-      };
-      setMicError(messages[event.error] || `Error: ${event.error}`);
+      // Fatal WebSpeech error — fall back to Groq
+      const fatalErrors = new Set(['network', 'service-not-allowed', 'not-allowed', 'audio-capture']);
+      if (fatalErrors.has(event.error) && wantRecordingRef.current) {
+        recognitionRef.current = null;
+        startGroqRecording();
+        return;
+      }
+
+      setMicError(`Error: ${event.error}`);
       setTimeout(() => setMicError(null), 4000);
       wantRecordingRef.current = false;
       recognitionRef.current = null;
@@ -226,8 +292,9 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
         setTimeout(() => {
           if (wantRecordingRef.current) {
             try { recognition.start(); } catch {
-              wantRecordingRef.current = false;
-              setRecording(false);
+              // WebSpeech restart failed — fall back to Groq
+              recognitionRef.current = null;
+              startGroqRecording();
             }
           }
         }, 100);
@@ -239,30 +306,28 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     try {
       recognition.start();
     } catch {
-      setMicError('Failed to start speech recognition');
-      setTimeout(() => setMicError(null), 3000);
-      wantRecordingRef.current = false;
-      setRecording(false);
+      // WebSpeech start failed — fall back to Groq
+      recognitionRef.current = null;
+      startGroqRecording();
     }
-  }, [plateEditor]);
+  }, [plateEditor, startGroqRecording]);
 
   const toggleRecording = useCallback(async () => {
-    // If already recording, stop
-    if (recording && recognitionRef.current) {
-      wantRecordingRef.current = false;
-      const ref = recognitionRef.current;
-      recognitionRef.current = null;
-      try { ref.stop(); } catch { /* ignore */ }
-      setRecording(false);
-      return;
-    }
-
-    // Check browser support
-    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionCtor) {
-      setMicError('Speech recognition not supported in this browser');
-      setTimeout(() => setMicError(null), 3000);
-      return;
+    // If already recording, stop (either mode)
+    if (recording) {
+      if (groqModeRef.current) {
+        wantRecordingRef.current = false;
+        stopGroqRecording();
+        return;
+      }
+      if (recognitionRef.current) {
+        wantRecordingRef.current = false;
+        const ref = recognitionRef.current;
+        recognitionRef.current = null;
+        try { ref.stop(); } catch { /* ignore */ }
+        setRecording(false);
+        return;
+      }
     }
 
     // Request microphone permission — then immediately release the stream
@@ -281,7 +346,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     setRecording(true);
     setMicError(null);
     startRecognition();
-  }, [recording, startRecognition]);
+  }, [recording, startRecognition, stopGroqRecording]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -289,6 +354,9 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
       wantRecordingRef.current = false;
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
       }
     };
   }, []);
@@ -300,22 +368,24 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
   return (
     <>
       {/* Page count — bottom left, positioned within editor area */}
-      <div
-        className="text-xs rounded-full"
-        style={{
-          position: 'fixed',
-          bottom: 16,
-          left: containerRect ? containerRect.left + 16 : 16,
-          backgroundColor: 'var(--color-cream-dark, #F0F0EC)',
-          color: 'var(--color-ink-lighter, #9B9B9B)',
-          padding: '4px 12px',
-          userSelect: 'none',
-          fontVariantNumeric: 'tabular-nums',
-          zIndex: 40,
-        }}
-      >
-        Page {currentPage}/{totalPages}
-      </div>
+      {totalPages > 1 && (
+        <div
+          className="text-xs rounded-full"
+          style={{
+            position: 'fixed',
+            bottom: 16,
+            left: containerRect ? containerRect.left + 16 : 16,
+            backgroundColor: 'var(--color-cream-dark, #F0F0EC)',
+            color: 'var(--color-ink-lighter, #9B9B9B)',
+            padding: '4px 12px',
+            userSelect: 'none',
+            fontVariantNumeric: 'tabular-nums',
+            zIndex: 40,
+          }}
+        >
+          Page {currentPage} of {totalPages}
+        </div>
+      )}
 
       {/* Word count + Mic — bottom right, positioned within editor area */}
       <div

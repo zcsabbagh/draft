@@ -127,20 +127,12 @@ body {
     min-height: auto;
   }
 
-  /* Mobile scroll indicator — visible thumb on the right edge */
+  /* Hide default scrollbar on mobile — we use ScrollAssist instead */
   .page-background {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-ink-lighter) transparent;
+    scrollbar-width: none;
   }
   .page-background::-webkit-scrollbar {
-    width: 4px;
-  }
-  .page-background::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .page-background::-webkit-scrollbar-thumb {
-    background: var(--color-ink-lighter);
-    border-radius: 2px;
+    display: none;
   }
 }
 

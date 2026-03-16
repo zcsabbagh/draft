@@ -264,6 +264,58 @@ function editorWebSocketBridge(): Plugin {
   };
 }
 
+function transcribeProxy(): Plugin {
+  return {
+    name: 'transcribe-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/transcribe', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end('Method not allowed');
+          return;
+        }
+
+        const groqKey = process.env.GROQ_API_KEY;
+        if (!groqKey) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ error: 'GROQ_API_KEY not set in environment' }));
+          return;
+        }
+
+        // Collect raw body as Buffer
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk: Buffer) => chunks.push(chunk));
+        req.on('end', async () => {
+          try {
+            const rawBody = Buffer.concat(chunks);
+            const contentType = req.headers['content-type'] || '';
+
+            const response = await fetch(
+              'https://api.groq.com/openai/v1/audio/transcriptions',
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${groqKey}`,
+                  'Content-Type': contentType,
+                },
+                body: rawBody,
+              }
+            );
+
+            const data = await response.text();
+            res.setHeader('Content-Type', 'application/json');
+            res.statusCode = response.status;
+            res.end(data);
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: String(e) }));
+          }
+        });
+      });
+    },
+  };
+}
+
 function claudeProxy(): Plugin {
   return {
     name: 'claude-proxy',
@@ -370,7 +422,7 @@ function claudeProxy(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), importProxy(), claudeProxy(), editorWebSocketBridge()],
+  plugins: [react(), tailwindcss(), importProxy(), transcribeProxy(), claudeProxy(), editorWebSocketBridge()],
   server: {
     port: 3000,
   },
