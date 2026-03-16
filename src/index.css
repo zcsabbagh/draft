@@ -118,21 +118,37 @@ body {
     box-shadow: none;
     border-radius: 0;
   }
-  .page-container::before,
-  .page-container::after {
-    display: none;
-  }
   .page-content {
     padding: 20px 16px;
     min-height: auto;
   }
 
-  /* Hide default scrollbar on mobile — we use ScrollAssist instead */
-  .page-background {
-    scrollbar-width: none;
+  /* Page break lines on mobile — thin dashed separator */
+  .page-container::before {
+    display: block;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 1055px,
+      var(--color-border) 1055.5px,
+      transparent 1056px,
+      transparent 1077px
+    );
+    background-size: 100% 1077px;
   }
-  .page-background::-webkit-scrollbar {
+  .page-container::after {
     display: none;
+  }
+
+  /* Hide ALL scrollbars on mobile — we use ScrollAssist instead */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 }
 
