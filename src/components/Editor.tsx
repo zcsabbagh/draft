@@ -68,7 +68,8 @@ import { getFontByName, FONT_OPTIONS } from '../lib/fonts';
 import type { FeedbackComment } from '../lib/types';
 import type { Citation } from '../lib/api';
 import { useEditorBridge } from '../hooks/useEditorBridge';
-import CursorOverlay from './CursorOverlay';
+// CursorOverlay temporarily disabled for debugging
+// import CursorOverlay from './CursorOverlay';
 
 const HIGHLIGHT_STYLES: Record<string, React.CSSProperties> = {
   vague: { backgroundColor: '#FFF3E8', borderBottom: '2px solid #E8A87C', borderRadius: 2, cursor: 'pointer', padding: '1px 0' },
@@ -1006,7 +1007,14 @@ export default function Editor({
       }
 
       // MCP inline comments (marks like comment_xxx: true)
-      const hasCommentMark = Object.keys(leaf).some((k) => k.startsWith('comment_'));
+      // Use for...in loop for early exit instead of Object.keys().some() (js-early-exit)
+      let hasCommentMark = false;
+      for (const k in leaf) {
+        if (k.charCodeAt(0) === 99 /* 'c' */ && k.startsWith('comment_')) {
+          hasCommentMark = true;
+          break;
+        }
+      }
       if (hasCommentMark) {
         inlineStyle.backgroundColor = 'rgba(255, 200, 50, 0.25)';
         inlineStyle.borderBottom = '2px solid rgba(255, 180, 0, 0.6)';

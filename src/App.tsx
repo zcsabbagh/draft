@@ -823,30 +823,46 @@ export default function App() {
         )}
       </div>
 
-      {/* Import Dialogs */}
-      <ImportDialog
-        open={importDialogOpen}
-        onClose={() => setImportDialogOpen(false)}
-        onImport={handleImport}
-      />
-      <ImportNotionDialog
-        open={importNotionDialogOpen}
-        onClose={() => setImportNotionDialogOpen(false)}
-        onImport={handleImport}
-      />
-      {import.meta.env.DEV && <Agentation />}
+      {/* Lazy-loaded dialogs — only fetched when first opened (bundle-dynamic-imports) */}
+      {importDialogOpen && (
+        <Suspense fallback={null}>
+          <ImportDialog
+            open={importDialogOpen}
+            onClose={() => setImportDialogOpen(false)}
+            onImport={handleImport}
+          />
+        </Suspense>
+      )}
+      {importNotionDialogOpen && (
+        <Suspense fallback={null}>
+          <ImportNotionDialog
+            open={importNotionDialogOpen}
+            onClose={() => setImportNotionDialogOpen(false)}
+            onImport={handleImport}
+          />
+        </Suspense>
+      )}
+      {import.meta.env.DEV && (
+        <Suspense fallback={null}>
+          <Agentation />
+        </Suspense>
+      )}
 
-      {/* Command Palette */}
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        editor={plateEditorRef.current}
-        onExportPDF={handleExportPDF}
-        onRequestFeedback={handleRequestFeedback}
-        onOpenImportDialog={() => setImportDialogOpen(true)}
-        onNewDocument={handleNewDocument}
-        onShare={handleShare}
-      />
+      {/* Command Palette — lazy loaded, only fetched on first Cmd+K */}
+      {commandPaletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            open={commandPaletteOpen}
+            onClose={() => setCommandPaletteOpen(false)}
+            editor={plateEditorRef.current}
+            onExportPDF={handleExportPDF}
+            onRequestFeedback={handleRequestFeedback}
+            onOpenImportDialog={() => setImportDialogOpen(true)}
+            onNewDocument={handleNewDocument}
+            onShare={handleShare}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

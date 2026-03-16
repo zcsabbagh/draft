@@ -25,13 +25,17 @@ type SlateNode = SlateElement | SlateText;
  * Google Docs export HTML puts all formatting in class-based CSS
  * (e.g., `.c5 { font-weight: 700; font-style: italic; }`).
  */
+// Hoisted regexes — avoids re-creation per call (js-hoist-regexp)
+const CSS_RULE_RE = /([^{}]+)\{([^{}]+)\}/g;
+const CAMEL_CASE_RE = /-([a-z])/g;
+
 function parseStyleSheets(doc: Document): Map<string, Record<string, string>> {
   const classStyles = new Map<string, Record<string, string>>();
 
   for (const styleEl of Array.from(doc.querySelectorAll('style'))) {
     const text = styleEl.textContent || '';
     // Match rules like `.c5 { ... }` or `.c5, .c6 { ... }`
-    const ruleRe = /([^{}]+)\{([^{}]+)\}/g;
+    const ruleRe = new RegExp(CSS_RULE_RE.source, CSS_RULE_RE.flags);
     let match: RegExpExecArray | null;
     while ((match = ruleRe.exec(text)) !== null) {
       const selectors = match[1].trim();
@@ -76,7 +80,7 @@ function inlineClassStyles(doc: Document, classStyles: Map<string, Record<string
       if (!styles) continue;
       for (const [prop, val] of Object.entries(styles)) {
         // Only set if not already set inline (inline takes precedence)
-        const camelProp = prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        const camelProp = prop.replace(CAMEL_CASE_RE, (_, c) => c.toUpperCase());
         if (!(htmlEl.style as any)[camelProp]) {
           (htmlEl.style as any)[camelProp] = val;
         }
@@ -143,14 +147,17 @@ function convertChildren(parent: Node): SlateElement[] {
   return result;
 }
 
+// Use Set for O(1) lookups instead of Array.includes (js-set-map-lookups)
+const BLOCK_ELEMENTS = new Set([
+  'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'blockquote', 'ul', 'ol', 'li', 'hr', 'br',
+  'table', 'thead', 'tbody', 'tr', 'td', 'th',
+  'section', 'article', 'header', 'footer', 'main',
+  'pre', 'figure', 'figcaption',
+]);
+
 function isBlockElement(tag: string): boolean {
-  return [
-    'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'blockquote', 'ul', 'ol', 'li', 'hr', 'br',
-    'table', 'thead', 'tbody', 'tr', 'td', 'th',
-    'section', 'article', 'header', 'footer', 'main',
-    'pre', 'figure', 'figcaption',
-  ].includes(tag);
+  return BLOCK_ELEMENTS.has(tag);
 }
 
 function convertElement(el: HTMLElement): SlateElement[] {
@@ -380,6 +387,10 @@ export function plainTextToSlateNodes(text: string): SlateElement[] {
 /**
  * Parse inline markdown within a single line and return SlateNode[].
  */
+// Hoisted regex — avoids re-creation per call (js-hoist-regexp)
+const MARKDOWN_INLINE_RE =
+  /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*{3}(.+?)\*{3}|_{3}(.+?)_{3}|\*{2}(.+?)\*{2}|_{2}(.+?)_{2}|~~(.+?)~~|\*(.+?)\*|(?<=\s|^)_([^_]+)_(?=\s|$|[.,;:!?])/g;
+
 function parseMarkdownInline(text: string): SlateNode[] {
   const nodes: SlateNode[] = [];
 
@@ -390,8 +401,7 @@ function parseMarkdownInline(text: string): SlateNode[] {
   // 4. bold **text** or __text__
   // 5. strikethrough ~~text~~
   // 6. italic *text* or _text_
-  const inlineRe =
-    /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*{3}(.+?)\*{3}|_{3}(.+?)_{3}|\*{2}(.+?)\*{2}|_{2}(.+?)_{2}|~~(.+?)~~|\*(.+?)\*|(?<=\s|^)_([^_]+)_(?=\s|$|[.,;:!?])/g;
+  const inlineRe = new RegExp(MARKDOWN_INLINE_RE.source, MARKDOWN_INLINE_RE.flags);
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;

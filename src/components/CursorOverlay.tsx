@@ -157,9 +157,10 @@ export default function CursorOverlay() {
     CursorEditor.on(editor as any, 'change', scheduleRefresh);
 
     // Also refresh on local editor changes (scroll, resize, content changes)
+    // Use passive scroll listeners for better scrolling performance (client-event-listeners)
     const editorEl = containerRef.current?.closest('[data-slate-editor]');
     if (editorEl) {
-      editorEl.addEventListener('scroll', scheduleRefresh);
+      editorEl.addEventListener('scroll', scheduleRefresh, { passive: true });
     }
     window.addEventListener('resize', scheduleRefresh);
 
@@ -172,7 +173,7 @@ export default function CursorOverlay() {
     // Also refresh on scroll of any scrollable ancestor
     const scrollParent = containerRef.current?.closest('.overflow-auto, .overflow-y-auto, [style*="overflow"]');
     if (scrollParent) {
-      scrollParent.addEventListener('scroll', scheduleRefresh);
+      scrollParent.addEventListener('scroll', scheduleRefresh, { passive: true });
     }
 
     // Initial refresh

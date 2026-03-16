@@ -325,13 +325,16 @@ export default function ChatPanel({
     if (!chatInput.trim() || chatLoading || !onChatMessage) return;
 
     const msg = chatInput.trim();
-    const history = [...chatMessages];
-    setChatMessages((prev) => [...prev, { role: 'user', content: msg }]);
+    // Capture history via functional setState to avoid chatMessages dependency (rerender-functional-setstate)
+    let history: ChatMessage[] = [];
+    let streamIdx = 0;
+    setChatMessages((prev) => {
+      history = prev;
+      streamIdx = prev.length + 1;
+      return [...prev, { role: 'user', content: msg }, { role: 'assistant', content: '' }];
+    });
     setChatInput('');
     setChatLoading(true);
-
-    const streamIdx = chatMessages.length + 1;
-    setChatMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
     try {
       await onChatMessage(msg, history, (text) => {
@@ -350,7 +353,7 @@ export default function ChatPanel({
     } finally {
       setChatLoading(false);
     }
-  }, [chatInput, chatLoading, onChatMessage, chatMessages]);
+  }, [chatInput, chatLoading, onChatMessage]);
 
   const handleTabSwitch = useCallback((key: Tab) => {
     startTransition(() => {
@@ -358,7 +361,10 @@ export default function ChatPanel({
     });
   }, []);
 
-  const unresolvedCount = comments.filter((c) => !resolved.has(c.id)).length;
+  const unresolvedCount = useMemo(
+    () => comments.filter((c) => !resolved.has(c.id)).length,
+    [comments, resolved],
+  );
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: '#F0EEE6' }}>

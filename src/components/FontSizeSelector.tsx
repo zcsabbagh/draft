@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 
+// Hoisted regexes — avoids re-creation per call (js-hoist-regexp)
+const DIGITS_ONLY_RE = /^\d+$/;
+const NON_DIGIT_RE = /\D/g;
+
 const FONT_SIZES = [
   { label: '10', value: '10px' },
   { label: '12', value: '12px' },
@@ -58,7 +62,7 @@ export default function FontSizeSelector({ currentSize, onSizeChange }: FontSize
         onSizeChange(filtered[0].value);
         setOpen(false);
         setFilter('');
-      } else if (filter && /^\d+$/.test(filter)) {
+      } else if (filter && DIGITS_ONLY_RE.test(filter)) {
         onSizeChange(`${filter}px`);
         setOpen(false);
         setFilter('');
@@ -91,7 +95,7 @@ export default function FontSizeSelector({ currentSize, onSizeChange }: FontSize
           <input
             ref={inputRef}
             value={filter}
-            onChange={(e) => setFilter(e.target.value.replace(/\D/g, ''))}
+            onChange={(e) => setFilter(e.target.value.replace(NON_DIGIT_RE, ''))}
             onKeyDown={handleInputKeyDown}
             onMouseDown={(e) => e.stopPropagation()}
             placeholder={displaySize}
