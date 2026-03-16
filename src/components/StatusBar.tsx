@@ -57,20 +57,27 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
   // within the editor area instead of the full viewport.
   const [containerRect, setContainerRect] = useState<{ left: number; right: number } | null>(null);
 
-  // Track keyboard height via visualViewport so the status bar stays above the keyboard
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  // On iOS Safari, position:fixed elements are positioned relative to the
+  // layout viewport, not the visual viewport. When the keyboard opens, the
+  // layout viewport stays the same size — it just scrolls. So we need to
+  // compute the bottom position from the visual viewport directly.
+  const [statusBottom, setStatusBottom] = useState(16);
 
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
 
     const update = () => {
-      // The difference between layout viewport height and visual viewport height + offsetTop
-      // tells us how much the keyboard is pushing up
-      const offset = window.innerHeight - (vv.height + vv.offsetTop);
-      setKeyboardOffset(Math.max(0, offset));
+      // Position relative to the bottom of the visual viewport
+      // vv.offsetTop = how far the visual viewport top has scrolled from layout viewport top
+      // vv.height = visible height (shrinks when keyboard opens)
+      // We want our element at: vv.offsetTop + vv.height - 16 (from top of layout viewport)
+      // As a "bottom" value: window.innerHeight - (vv.offsetTop + vv.height) + 16
+      const bottom = window.innerHeight - (vv.offsetTop + vv.height) + 16;
+      setStatusBottom(Math.max(16, bottom));
     };
 
+    update();
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
     return () => {
@@ -397,7 +404,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
           className="text-xs rounded-full"
           style={{
             position: 'fixed',
-            bottom: 16 + keyboardOffset,
+            bottom: statusBottom,
             left: containerRect ? containerRect.left + 16 : 16,
             backgroundColor: 'var(--color-cream-dark, #F0F0EC)',
             color: 'var(--color-ink-lighter, #9B9B9B)',
@@ -417,7 +424,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
         className="flex items-center gap-2"
         style={{
           position: 'fixed',
-          bottom: 16 + keyboardOffset,
+          bottom: statusBottom,
           right: containerRect ? window.innerWidth - containerRect.right + 16 : 16,
           zIndex: 40,
           transition: 'bottom 0.15s ease-out',
