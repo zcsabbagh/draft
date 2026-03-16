@@ -140,7 +140,9 @@ body {
     display: none;
   }
 
-  /* Hide ALL scrollbars on mobile — we use ScrollAssist instead */
+  /* Hide ALL scrollbars on mobile — we use ScrollAssist instead.
+     iOS Safari renders a native overlay indicator that ignores CSS scrollbar
+     properties, so we also clip it by shifting the scrollable area. */
   * {
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -149,6 +151,11 @@ body {
     display: none;
     width: 0;
     height: 0;
+  }
+  /* Clip iOS native scroll indicator by widening scrollable area past viewport */
+  .page-background {
+    margin-right: -20px;
+    padding-right: 20px;
   }
 }
 

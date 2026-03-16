@@ -13,9 +13,7 @@ const TRACK_BOTTOM = 60;  // above status bar
 
 export default function ScrollAssist({ scrollContainerRef, isMobile }: ScrollAssistProps) {
   const [topPx, setTopPx] = useState(TRACK_TOP);
-  const [visible, setVisible] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragRef = useRef<{ startY: number; startScrollTop: number } | null>(null);
 
   // Compute the usable track height
@@ -31,14 +29,6 @@ export default function ScrollAssist({ scrollContainerRef, isMobile }: ScrollAss
     return TRACK_TOP + ratio * getTrackHeight();
   }, [getTrackHeight]);
 
-  // Show the handle briefly then fade
-  const scheduleHide = useCallback(() => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    hideTimer.current = setTimeout(() => {
-      if (!isDragging) setVisible(false);
-    }, 2000);
-  }, [isDragging]);
-
   // Listen for scroll to update handle position
   useEffect(() => {
     if (!isMobile) return;
@@ -46,19 +36,14 @@ export default function ScrollAssist({ scrollContainerRef, isMobile }: ScrollAss
     if (!el) return;
 
     const onScroll = () => {
-      const scrollable = el.scrollHeight - el.clientHeight;
-      if (scrollable <= 10) {
-        setVisible(false);
-        return;
-      }
       setTopPx(scrollToHandleY(el));
-      setVisible(true);
-      scheduleHide();
     };
 
+    // Set initial position
+    onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [isMobile, scrollContainerRef, scrollToHandleY, scheduleHide]);
+  }, [isMobile, scrollContainerRef, scrollToHandleY]);
 
   // Touch handlers — dragging moves the document AND the handle
   const onTouchStart = useCallback((e: React.TouchEvent) => {
@@ -66,7 +51,6 @@ export default function ScrollAssist({ scrollContainerRef, isMobile }: ScrollAss
     const el = scrollContainerRef.current;
     if (!el) return;
     setIsDragging(true);
-    if (hideTimer.current) clearTimeout(hideTimer.current);
     dragRef.current = {
       startY: e.touches[0].clientY,
       startScrollTop: el.scrollTop,
@@ -96,8 +80,7 @@ export default function ScrollAssist({ scrollContainerRef, isMobile }: ScrollAss
   const onTouchEnd = useCallback(() => {
     setIsDragging(false);
     dragRef.current = null;
-    scheduleHide();
-  }, [scheduleHide]);
+  }, []);
 
   // Tap to scroll by step
   const scroll = useCallback((direction: 'up' | 'down') => {
@@ -164,9 +147,8 @@ export default function ScrollAssist({ scrollContainerRef, isMobile }: ScrollAss
           gap: 0,
           touchAction: 'none',
           cursor: 'grab',
-          opacity: visible || isDragging ? 1 : 0,
-          transition: isDragging ? 'none' : 'opacity 0.3s ease, top 0.15s ease-out',
-          pointerEvents: visible || isDragging ? 'auto' : 'none',
+          opacity: 1,
+          transition: isDragging ? 'none' : 'top 0.15s ease-out',
           // Slight overflow clip for refraction filter
           overflow: 'hidden',
           isolation: 'isolate',
