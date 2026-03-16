@@ -30,20 +30,32 @@ export default function CursorOverlay() {
   const rafRef = useRef<number>(0);
 
   const refreshCursors = useCallback(() => {
-    if (!CursorEditor.isCursorEditor(editor)) return;
+    try {
+      if (!CursorEditor.isCursorEditor(editor)) return;
+    } catch {
+      return;
+    }
 
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
     const containerRect = container.getBoundingClientRect();
-    const states = CursorEditor.cursorStates(editor) as Record<
-      string,
-      CursorState<CursorData>
-    >;
+
+    let states: Record<string, CursorState<CursorData>>;
+    try {
+      states = CursorEditor.cursorStates(editor) as Record<string, CursorState<CursorData>>;
+    } catch {
+      return;
+    }
 
     // Get the Yjs shared root from the editor
-    const yjsOptions = editor.getOptions(YjsPlugin);
-    const sharedType = yjsOptions.sharedType;
+    let sharedType: any;
+    try {
+      const yjsOptions = editor.getOptions(YjsPlugin);
+      sharedType = yjsOptions.sharedType;
+    } catch {
+      return;
+    }
     if (!sharedType) return;
 
     const remoteCursors: RemoteCursor[] = [];
@@ -132,7 +144,9 @@ export default function CursorOverlay() {
   }, [editor]);
 
   useEffect(() => {
-    if (!CursorEditor.isCursorEditor(editor)) return;
+    let isCursor = false;
+    try { isCursor = CursorEditor.isCursorEditor(editor); } catch { /* */ }
+    if (!isCursor) return;
 
     const scheduleRefresh = () => {
       cancelAnimationFrame(rafRef.current);
@@ -140,7 +154,7 @@ export default function CursorOverlay() {
     };
 
     // Listen to remote cursor changes
-    CursorEditor.on(editor, 'change', scheduleRefresh);
+    CursorEditor.on(editor as any, 'change', scheduleRefresh);
 
     // Also refresh on local editor changes (scroll, resize, content changes)
     const editorEl = containerRef.current?.closest('[data-slate-editor]');

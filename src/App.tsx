@@ -48,7 +48,10 @@ function getDocumentIdFromUrl(): string {
   const path = window.location.pathname;
   const match = path.match(/^\/d\/(.+)$/);
   if (match) return decodeURIComponent(match[1]);
-  return import.meta.env.VITE_COLLAB_DOC || 'draft-default';
+  // No document ID in URL — generate one and redirect
+  const newId = generateDocumentId();
+  window.history.replaceState(null, '', `/d/${newId}`);
+  return newId;
 }
 
 function generateDocumentId(): string {

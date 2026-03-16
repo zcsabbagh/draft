@@ -302,6 +302,8 @@ export function useEditorBridge(editor: AnyEditor | null) {
   }, []);
 
   const connect = useCallback(() => {
+    // Only connect to WS bridge on localhost (not on deployed Vercel)
+    if (typeof window !== 'undefined' && !window.location.hostname.includes('localhost')) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const ws = new WebSocket('ws://localhost:3000/ws/editor');
