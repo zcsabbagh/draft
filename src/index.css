@@ -31,8 +31,13 @@ body {
 
 #root {
   height: 100vh;
+  height: 100dvh; /* dynamic viewport height — accounts for mobile browser chrome */
   display: flex;
   flex-direction: column;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* A4 page layout */
@@ -43,23 +48,55 @@ body {
 
 .page-container {
   width: 816px; /* 8.5in at 96dpi — US Letter / close to A4 */
+  max-width: 100%; /* prevent overflow on narrow viewports like iPad Mini */
   min-height: 1056px; /* 11in at 96dpi */
   margin: 0 auto;
   background: white;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 6px 20px rgba(0,0,0,0.06);
   border-radius: 2px;
-  /* Visual page breaks via repeating gradient */
+  position: relative;
+}
+
+/* Page break gaps — opaque overlay that covers text flowing between pages */
+.page-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
   background-image: repeating-linear-gradient(
     to bottom,
-    white 0px,
+    transparent 0px,
+    transparent 1055px,
     white 1055px,
-    #E5E5E0 1055px,
-    #E5E5E0 1056px,
+    white 1056px,
     #FAF9F5 1056px,
     #FAF9F5 1076px,
+    white 1076px,
+    white 1077px,
+    transparent 1077px
+  );
+  background-size: 100% 1077px;
+}
+
+/* Thin border lines at the edges of each page break */
+.page-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 1055px,
+    #E5E5E0 1055px,
+    #E5E5E0 1056px,
+    transparent 1056px,
+    transparent 1076px,
     #E5E5E0 1076px,
     #E5E5E0 1077px,
-    white 1077px
+    transparent 1077px
   );
   background-size: 100% 1077px;
 }
@@ -67,6 +104,44 @@ body {
 .page-content {
   padding: 96px; /* ~1in margins */
   min-height: 1056px;
+  position: relative;
+}
+
+/* Mobile: full-width page, no shadow, smaller padding */
+@media (max-width: 767px) {
+  .page-background {
+    padding: 0;
+  }
+  .page-container {
+    width: 100%;
+    min-height: auto;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .page-container::before,
+  .page-container::after {
+    display: none;
+  }
+  .page-content {
+    padding: 20px 16px;
+    min-height: auto;
+  }
+
+  /* Mobile scroll indicator — visible thumb on the right edge */
+  .page-background {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-lighter) transparent;
+  }
+  .page-background::-webkit-scrollbar {
+    width: 4px;
+  }
+  .page-background::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .page-background::-webkit-scrollbar-thumb {
+    background: var(--color-ink-lighter);
+    border-radius: 2px;
+  }
 }
 
 /* Page break element */
@@ -308,6 +383,21 @@ body {
   line-height: 1.7;
   color: var(--color-ink);
   outline: none;
+}
+
+@media (max-width: 767px) {
+  [data-slate-editor] {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .slate-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .slate-image-wrapper img {
+    max-height: 400px;
+  }
 }
 
 [data-slate-editor] [data-slate-placeholder] {

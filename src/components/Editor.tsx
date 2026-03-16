@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
+import ScrollAssist from './ScrollAssist';
 
 // Error boundary that auto-recovers from Yjs/Slate rendering crashes
 class EditorErrorBoundary extends React.Component<
@@ -102,6 +103,7 @@ interface EditorProps {
   editorRef?: React.RefObject<unknown | null>;
   collabUrl?: string;       // Hocuspocus WebSocket URL, e.g. ws://localhost:8888
   documentId?: string;      // Document name for collab
+  isMobile?: boolean;       // Mobile layout mode
 }
 
 // Toolbar button component
@@ -398,11 +400,12 @@ function LineSpacingSelector({ currentSpacing, onSpacingChange }: {
 
 const ZOOM_LEVELS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
 
-function Toolbar({ fontName, onFontChange, zoom, onZoomChange }: {
+function Toolbar({ fontName, onFontChange, zoom, onZoomChange, isMobile }: {
   fontName: string;
   onFontChange: (name: string) => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  isMobile?: boolean;
 }) {
   const editor = useEditorRef() as AnyEditor;
 
@@ -488,6 +491,30 @@ function Toolbar({ fontName, onFontChange, zoom, onZoomChange }: {
   const displayedFont = currentFontMark
     ? (FONT_OPTIONS.find((f) => f.family === currentFontMark)?.name ?? fontName)
     : fontName;
+
+  if (isMobile) {
+    // Compact mobile toolbar — just essential formatting
+    return (
+      <div className="flex items-center gap-0.5 px-3 py-1.5 bg-cream overflow-x-auto">
+        <ToolbarButton active={isBlockActive('h1')} onMouseDown={() => toggleBlock('h1')} title="Heading 1">H1</ToolbarButton>
+        <ToolbarButton active={isBlockActive('h2')} onMouseDown={() => toggleBlock('h2')} title="Heading 2">H2</ToolbarButton>
+        <div className="w-px h-4 bg-border mx-0.5 shrink-0" />
+        <ToolbarButton active={isMarkActive('bold')} onMouseDown={() => toggleMark('bold')} title="Bold"><strong>B</strong></ToolbarButton>
+        <ToolbarButton active={isMarkActive('italic')} onMouseDown={() => toggleMark('italic')} title="Italic"><em>I</em></ToolbarButton>
+        <ToolbarButton active={isMarkActive('underline')} onMouseDown={() => toggleMark('underline')} title="Underline"><span className="underline">U</span></ToolbarButton>
+        <div className="w-px h-4 bg-border mx-0.5 shrink-0" />
+        <ToolbarButton active={isBlockActive('blockquote')} onMouseDown={() => toggleBlock('blockquote')} title="Blockquote">
+          <span className="text-[10px]">❝</span>
+        </ToolbarButton>
+        <ToolbarButton active={currentAlign === 'left'} onMouseDown={() => setBlockProp('align', 'left')} title="Align Left">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><line x1="1" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="1" y1="5" x2="8" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="1" y1="8" x2="11" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="1" y1="11" x2="6" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+        </ToolbarButton>
+        <ToolbarButton active={currentAlign === 'center'} onMouseDown={() => setBlockProp('align', 'center')} title="Align Center">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><line x1="1" y1="2" x2="11" y2="2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="2.5" y1="5" x2="9.5" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="1" y1="8" x2="11" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><line x1="3.5" y1="11" x2="8.5" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+        </ToolbarButton>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-0.5 px-6 py-2 bg-cream flex-wrap">
@@ -690,6 +717,7 @@ export default function Editor({
   editorRef: externalEditorRef,
   collabUrl,
   documentId = 'draft-default',
+  isMobile = false,
 }: EditorProps) {
   const fontFamily = getFontByName(fontName).family;
   const useCollab = !!collabUrl;
@@ -1197,8 +1225,9 @@ export default function Editor({
       renderLeaf={renderLeaf as never}
       readOnly={readOnly}
     >
-      {!readOnly && <Toolbar fontName={fontName} onFontChange={onFontChange || (() => {})} zoom={zoom} onZoomChange={onZoomChange || (() => {})} />}
+      {!readOnly && <Toolbar fontName={fontName} onFontChange={onFontChange || (() => {})} zoom={zoom} onZoomChange={onZoomChange || (() => {})} isMobile={isMobile} />}
       <div ref={pageBackgroundRef} className="page-background flex-1 overflow-y-auto custom-scrollbar relative">
+        {!readOnly && isMobile && <ScrollAssist scrollContainerRef={pageBackgroundRef} isMobile={isMobile} />}
         {!readOnly && <TableToolbar editor={editor as AnyEditor} />}
         {!readOnly && !editState && (
           <SelectionToolbar

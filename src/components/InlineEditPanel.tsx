@@ -110,10 +110,10 @@ export default function InlineEditPanel({
 
   return (
     <div
-      className="absolute z-50 w-[480px] bg-cream rounded-xl border border-border shadow-xl flex flex-col animate-fade-in-scale"
+      className="absolute z-50 w-[480px] max-w-[calc(100vw-32px)] bg-cream rounded-xl border border-border shadow-xl flex flex-col animate-fade-in-scale"
       style={{
         top: position.top,
-        left: Math.max(0, position.left),
+        left: Math.max(0, Math.min(position.left, typeof window !== 'undefined' ? window.innerWidth - 500 : position.left)),
       }}
     >
       {/* Error display */}
