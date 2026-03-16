@@ -33,3 +33,6 @@ e2e/screenshots
 
 # MCP App build artifacts
 mcp/app/editor-shared.css
+
+# Skills plugin cache
+skills-lock.json
