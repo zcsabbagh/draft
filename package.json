@@ -7,9 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "collab": "node collab/server.js"
   },
   "dependencies": {
+    "@hocuspocus/extension-database": "^3.4.4",
+    "@hocuspocus/provider": "^3.4.4",
+    "@hocuspocus/server": "^3.4.4",
     "@platejs/basic-nodes": "^52.0.11",
     "@platejs/caption": "^52.0.11",
     "@platejs/comment": "^52.0.11",
@@ -20,8 +24,10 @@
     "@platejs/resizable": "^52.0.11",
     "@platejs/suggestion": "^52.0.11",
     "@platejs/table": "^52.0.11",
+    "@platejs/yjs": "^52.0.13",
     "@tailwindcss/vite": "^4.2.1",
     "agentation": "^2.3.3",
+    "better-sqlite3": "^12.8.0",
     "cmdk": "^1.1.1",
     "html2pdf.js": "^0.14.0",
     "marked": "^17.0.4",
@@ -30,7 +36,9 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.2.1",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "y-prosemirror": "^1.3.7",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
@@ -38,6 +46,7 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@types/ws": "^8.18.1",
+    "@vercel/node": "^5.6.15",
     "@vitejs/plugin-react": "^4.4.1",
     "eslint": "^9.25.0",
     "eslint-plugin-react-hooks": "^5.2.0",

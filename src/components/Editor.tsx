@@ -8,6 +8,7 @@ import {
   useEditorRef,
   createPlatePlugin,
 } from 'platejs/react';
+import { YjsPlugin } from '@platejs/yjs/react';
 import {
   BasicBlocksPlugin,
   BasicMarksPlugin,
@@ -69,6 +70,8 @@ interface EditorProps {
   onCite?: (selectedText: string) => Promise<number>;
   onFeedbackSelection?: (selectedText: string) => void;
   editorRef?: React.RefObject<unknown | null>;
+  collabUrl?: string;       // Hocuspocus WebSocket URL, e.g. ws://localhost:8888
+  documentId?: string;      // Document name for collab
 }
 
 // Toolbar button component
@@ -655,8 +658,11 @@ export default function Editor({
   onCite,
   onFeedbackSelection,
   editorRef: externalEditorRef,
+  collabUrl,
+  documentId = 'draft-default',
 }: EditorProps) {
   const fontFamily = getFontByName(fontName).family;
+  const useCollab = !!collabUrl;
   const commentsRef = useRef(comments);
   const activeIdRef = useRef(activeCommentId);
   const clickRef = useRef(onCommentClick);
@@ -681,6 +687,29 @@ export default function Editor({
     clickRef.current = onCommentClick;
   }, [comments, activeCommentId, onCommentClick]);
 
+  // Build the Yjs plugin config only when collab is enabled
+  const yjsPluginConfig = useCollab
+    ? YjsPlugin.configure({
+        options: {
+          cursors: {
+            data: {
+              name: 'You',
+              color: '#C66140',
+            },
+          },
+          providers: [
+            {
+              type: 'hocuspocus' as const,
+              options: {
+                name: documentId,
+                url: collabUrl!,
+              },
+            },
+          ],
+        },
+      })
+    : null;
+
   const editor = usePlateEditor(
     {
       plugins: [
@@ -692,7 +721,9 @@ export default function Editor({
         TablePlugin,
         CitationLinkPlugin,
         PageBreakPlugin,
+        ...(yjsPluginConfig ? [yjsPluginConfig] : []),
       ],
+      ...(useCollab ? { skipInitialization: true } : {}),
       override: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         components: {
@@ -808,6 +839,36 @@ export default function Editor({
       }
     };
   }, [editor, externalEditorRef]);
+
+  // Initialize Yjs collaboration when enabled
+  const [yjsReady, setYjsReady] = useState(!useCollab); // true immediately if no collab
+  useEffect(() => {
+    if (!useCollab) return;
+    let destroyed = false;
+
+    const init = async () => {
+      try {
+        await editor.getApi(YjsPlugin).yjs.init({
+          id: documentId,
+          value: (initialValue as never) || [{ type: 'p', children: [{ text: '' }] }],
+        });
+        if (!destroyed) setYjsReady(true);
+      } catch (err) {
+        console.error('[Yjs] Failed to initialize:', err);
+        if (!destroyed) setYjsReady(true); // show editor anyway
+      }
+    };
+
+    init();
+
+    return () => {
+      destroyed = true;
+      try {
+        editor.getApi(YjsPlugin).yjs.destroy();
+      } catch { /* ignore */ }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useCollab, documentId]);
 
   // Connect to the WebSocket bridge for MCP server communication
   useEditorBridge(editor);
@@ -1083,6 +1144,18 @@ export default function Editor({
       return '';
     }
   }, [editor]);
+
+  if (!yjsReady) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-ink-lighter gap-2">
+        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        Connecting to document...
+      </div>
+    );
+  }
 
   return (
     <Plate

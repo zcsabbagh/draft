@@ -469,16 +469,43 @@ export default function ChatPanel({
                     <span className="text-sm text-ink-lighter">Reviewers are reading your draft...</span>
                   </div>
                 ) : comments.length === 0 ? (
-                  <div className="p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      {Object.keys(PERSONAS).map((type) => (
-                        <ReviewerAvatar key={type} type={type} size={24} />
+                  <div className="flex flex-col items-center justify-center h-full px-6 py-10 text-center">
+                    {/* Reviewer avatars in a stacked cluster */}
+                    <div className="flex items-center -space-x-2 mb-5">
+                      {Object.keys(PERSONAS).map((type, i) => (
+                        <div key={type} style={{ zIndex: 4 - i }}>
+                          <ReviewerAvatar type={type} size={36} />
+                        </div>
                       ))}
                     </div>
-                    <p className="text-sm text-ink-lighter mb-1">Your review team is ready.</p>
-                    <p className="text-sm text-ink-lighter">
-                      Write something and click <strong>Request Feedback</strong> to hear from them.
+
+                    <p className="text-sm font-medium text-ink mb-1.5">
+                      Your review team is ready
                     </p>
+                    <p className="text-xs text-ink-lighter leading-relaxed max-w-[220px] mb-5">
+                      Four reviewers will examine your writing for clarity, evidence, logic, and precision.
+                    </p>
+
+                    {/* Reviewer legend */}
+                    <div className="w-full max-w-[240px] space-y-2 mb-6">
+                      {Object.entries(PERSONAS).map(([type, persona]) => (
+                        <div key={type} className="flex items-center gap-2.5">
+                          <ReviewerAvatar type={type} size={20} />
+                          <div className="flex-1 text-left">
+                            <span className="text-[11px] font-medium text-ink">{persona.name}</span>
+                            <span className="text-[10px] text-ink-lighter ml-1.5">{persona.tagline}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-[10px] text-ink-lighter">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-50">
+                        <path d="M6 1v4l2.5 1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2" />
+                      </svg>
+                      Select text or click <strong className="font-medium text-ink-light">Request Feedback</strong>
+                    </div>
                   </div>
                 ) : (
                   <>

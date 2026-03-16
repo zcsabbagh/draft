@@ -556,6 +556,8 @@ export default function App() {
               onCite={handleCite}
               onFeedbackSelection={handleFeedbackSelection}
               editorRef={plateEditorRef}
+              collabUrl={import.meta.env.VITE_COLLAB_URL || undefined}
+              documentId={import.meta.env.VITE_COLLAB_DOC || 'draft-default'}
             />
           )}
         </div>

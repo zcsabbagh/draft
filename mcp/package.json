@@ -1,10 +1,26 @@
 {
-  "name": "draft-mcp-server",
+  "name": "drafts-mcp",
   "version": "1.0.0",
+  "description": "MCP server for Drafts — AI-powered collaborative writing editor. Connect to documents, read, edit, format, and insert content in real-time.",
   "type": "module",
   "main": "server.js",
+  "bin": {
+    "drafts-mcp": "server.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "writing",
+    "editor",
+    "collaborative",
+    "ai",
+    "drafts"
+  ],
+  "license": "MIT",
   "dependencies": {
+    "@hocuspocus/provider": "^3.4.4",
     "@modelcontextprotocol/sdk": "latest",
-    "ws": "^8.0.0"
+    "ws": "^8.0.0",
+    "yjs": "^13.6.30"
   }
 }
