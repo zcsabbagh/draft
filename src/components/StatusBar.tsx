@@ -132,9 +132,11 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     const handleScroll = () => {
       const scrollTop = el.scrollTop;
       const scrollHeight = el.scrollHeight;
-      const page = Math.floor(scrollTop / PAGE_HEIGHT) + 1;
+      // Use the center of the visible area to determine which page is "current"
+      const viewportCenter = scrollTop + el.clientHeight / 2;
+      const page = Math.floor(viewportCenter / PAGE_HEIGHT) + 1;
       const pages = Math.max(1, Math.ceil(scrollHeight / PAGE_HEIGHT));
-      setCurrentPage(page);
+      setCurrentPage(Math.min(page, pages));
       setTotalPages(pages);
     };
 
