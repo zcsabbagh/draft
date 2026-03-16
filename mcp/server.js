@@ -222,6 +222,18 @@ const server = new McpServer({
   version: '1.0.0',
 });
 
+// Log whether the host supports MCP Apps
+server.server.oninitialized = () => {
+  const caps = server.server.getClientCapabilities();
+  const uiExt = caps?.extensions?.['io.modelcontextprotocol/ui'];
+  if (uiExt) {
+    console.error('[Drafts] Host supports MCP Apps:', JSON.stringify(uiExt));
+  } else {
+    console.error('[Drafts] Host does NOT support MCP Apps — document preview will not render');
+    console.error('[Drafts] Client capabilities:', JSON.stringify(caps));
+  }
+};
+
 /** Parse a Draft share URL like https://draft-blue.vercel.app/d/my-essay and return the document ID */
 function parseShareUrl(shareUrl) {
   try {
@@ -289,6 +301,72 @@ registerAppTool(
             document: documentName,
             server: serverUrl,
             editorUrl,
+          }),
+        }],
+      };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// 0b. create_document — create a new document with a random ID
+registerAppTool(
+  server,
+  'create_document',
+  {
+    title: 'Create Document',
+    description: 'Create a new document with a random ID. Optionally pre-populate with a title and content.',
+    inputSchema: {
+      title: z.string().optional().describe('Optional document title (inserted as an h1 heading)'),
+      content: z.string().optional().describe('Optional initial content to populate the document with. Each line becomes a paragraph.'),
+    },
+    _meta: { ui: { resourceUri: RESOURCE_URI } },
+  },
+  async ({ title, content }) => {
+    try {
+      // Generate random 10-character lowercase alphanumeric ID
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      let documentId = '';
+      for (let i = 0; i < 10; i++) {
+        documentId += chars[Math.floor(Math.random() * chars.length)];
+      }
+
+      const token = JSON.stringify({
+        name: 'MCP Agent',
+        color: '#C66140',
+        role: 'editor',
+      });
+      await connectToDocument(DEFAULT_HOCUSPOCUS_URL, documentId, token);
+
+      // Wait a moment for the document to be ready
+      await new Promise(r => setTimeout(r, 300));
+
+      const root = getSharedRoot();
+
+      // Insert title as h1 if provided
+      if (title) {
+        insertParagraph(root, title, 'h1');
+      }
+
+      // Insert content as paragraphs if provided
+      if (content) {
+        const lines = content.split('\n');
+        for (const line of lines) {
+          insertParagraph(root, line);
+        }
+      }
+
+      const editorUrl = `${DRAFT_APP_URL}/d/${encodeURIComponent(documentId)}`;
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            created: true,
+            document: documentId,
+            editorUrl,
+            message: `Document "${documentId}" created successfully.`,
           }),
         }],
       };
@@ -929,6 +1007,99 @@ server.tool(
   }
 );
 
+// ── App-only tool: poll_document (hidden from model, callable by MCP App) ──
+
+registerAppTool(
+  server,
+  'poll_document',
+  {
+    title: 'Poll Document',
+    description: 'Returns the current document content as Slate JSON for live preview.',
+    inputSchema: {},
+    _meta: {
+      ui: {
+        resourceUri: RESOURCE_URI,
+        visibility: ['app'],
+      },
+    },
+  },
+  async () => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: 'Not connected' }) }] };
+      }
+      const root = getSharedRoot();
+      const nodes = deltaToJson(root);
+      const text = deltaToPlainText(root);
+      const words = text.trim().split(/\s+/).filter(Boolean).length;
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ nodes, wordCount: words, document: yjsDocName }),
+        }],
+      };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
+// ── App-only tool: apply_user_edit (hidden from model, callable by MCP App) ──
+
+registerAppTool(
+  server,
+  'apply_user_edit',
+  {
+    title: 'Apply User Edit',
+    description: 'Replaces the document content with text edited by the user in the MCP App.',
+    inputSchema: {
+      content: z.string().describe('The full document text, with paragraphs separated by newlines'),
+    },
+    _meta: {
+      ui: {
+        resourceUri: RESOURCE_URI,
+        visibility: ['app'],
+      },
+    },
+  },
+  async ({ content }) => {
+    try {
+      if (!yjsConnected || !yjsDoc) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: 'Not connected' }) }] };
+      }
+      // Clear the document using the headless editor
+      await withHeadlessEditor((editor) => {
+        while (editor.children.length > 0) {
+          Transforms.removeNodes(editor, { at: [0] });
+        }
+        Transforms.insertNodes(editor, { type: 'p', children: [{ text: '' }] }, { at: [0] });
+      });
+
+      // Insert new content as paragraphs
+      const root = getSharedRoot();
+      const lines = content.split('\n');
+
+      // Remove the empty paragraph we just created, then insert new content
+      await withHeadlessEditor((editor) => {
+        if (editor.children.length === 1) {
+          const firstText = Node.string(editor.children[0]);
+          if (firstText === '') {
+            Transforms.removeNodes(editor, { at: [0] });
+          }
+        }
+      });
+
+      for (const line of lines) {
+        insertParagraph(root, line);
+      }
+
+      return { content: [{ type: 'text', text: JSON.stringify({ applied: true }) }] };
+    } catch (err) {
+      return { content: [{ type: 'text', text: `Error: ${err.message}` }], isError: true };
+    }
+  }
+);
+
 // ── MCP App Resource — serves the bundled HTML UI ────────────────────
 
 registerAppResource(
@@ -946,8 +1117,11 @@ registerAppResource(
         _meta: {
           ui: {
             csp: {
-              frameDomains: ['https://draft-blue.vercel.app', 'http://localhost:3000'],
-              connectDomains: ['https://draft-blue.vercel.app', 'http://localhost:3000'],
+              connectDomains: [
+                'https://draft-collab-production.up.railway.app',
+                'wss://draft-collab-production.up.railway.app',
+                'ws://localhost:8888',
+              ],
             },
           },
         },
@@ -958,8 +1132,10 @@ registerAppResource(
 
 // ── Start ───────────────────────────────────────────────────────────
 
-if (process.argv.includes('--http')) {
-  // HTTP transport for testing with basic-host
+const useHttp = process.argv.includes('--http') || !!process.env.PORT;
+
+if (useHttp) {
+  // HTTP transport — used by Railway, Claude.ai custom connectors, and basic-host
   const { default: express } = await import('express');
   const { default: cors } = await import('cors');
 
@@ -968,15 +1144,19 @@ if (process.argv.includes('--http')) {
   app.use(cors());
   app.use(express.json());
 
-  app.all('/mcp', async (req, res) => {
-    const httpTransport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  // Health check
+  app.get('/', (_req, res) => res.json({ status: 'ok', name: 'Drafts MCP' }));
+  app.get('/mcp', (_req, res) => res.json({ status: 'ok', name: 'Drafts MCP' }));
+
+  app.post('/mcp', async (req, res) => {
+    const httpTransport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
     res.on('close', () => {
       httpTransport.close().catch(() => {});
     });
     try {
-      // For HTTP mode, create a fresh server per request
-      const httpServer = new McpServer({ name: 'Drafts', version: '1.0.0' });
-      // Re-register tools on this instance... for now, just use the main server
       await server.connect(httpTransport);
       await httpTransport.handleRequest(req, res, req.body);
     } catch (error) {
@@ -987,11 +1167,11 @@ if (process.argv.includes('--http')) {
     }
   });
 
-  app.listen(port, () => {
-    console.error(`[Drafts] MCP server listening on http://localhost:${port}/mcp`);
+  app.listen(port, '0.0.0.0', () => {
+    console.error(`[Drafts] MCP server listening on http://0.0.0.0:${port}/mcp`);
   });
 } else {
-  // Default: stdio transport
+  // Default: stdio transport (Claude Desktop, Claude Code)
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('[Drafts] MCP server started');

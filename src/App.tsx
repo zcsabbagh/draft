@@ -49,6 +49,9 @@ const INITIAL_VALUE = [
 // Hoisted regex — avoids re-creation per call (js-hoist-regexp)
 const DOC_ID_REGEX = /^\/d\/(.+)$/;
 
+/** Embed mode hides header, sidebar, and timeline — used by MCP App iframe */
+const IS_EMBED = new URLSearchParams(window.location.search).has('embed');
+
 function getDocumentIdFromUrl(): string {
   const path = window.location.pathname;
   const match = path.match(DOC_ID_REGEX);
@@ -91,7 +94,7 @@ export default function App() {
   const importMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [editorKey, setEditorKey] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(!IS_EMBED);
   const [zoom, setZoom] = useState(100);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(INITIAL_VALUE);
@@ -486,8 +489,8 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen bg-cream">
-      {/* Header */}
-      <header className={`flex items-center justify-between ${isMobile ? 'px-3 py-2' : 'px-6 py-3'} bg-cream`}>
+      {/* Header — hidden in embed mode */}
+      {IS_EMBED ? null : <header className={`flex items-center justify-between ${isMobile ? 'px-3 py-2' : 'px-6 py-3'} bg-cream`}>
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <span className={`${isMobile ? 'text-base' : 'text-lg'} font-semibold text-ink tracking-tight select-none shrink-0`}>Draft</span>
           <span className="text-ink-lighter select-none shrink-0">/</span>
@@ -721,10 +724,10 @@ export default function App() {
             </div>
           </div>
         )}
-      </header>
+      </header>}
 
-      {/* Timeline — hidden on mobile */}
-      {!isMobile && (
+      {/* Timeline — hidden on mobile and embed mode */}
+      {!isMobile && !IS_EMBED && (
         <TimelineScrubber
           snapshots={snapshots}
           activeIndex={timelineIndex}

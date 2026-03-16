@@ -1,11 +1,21 @@
 {
   "name": "drafts-mcp",
-  "version": "1.0.1",
-  "description": "MCP server for Drafts — AI-powered collaborative writing editor. Connect to documents, read, edit, format, and insert content in real-time.",
+  "version": "2.0.0",
+  "description": "MCP server for Drafts — AI-powered collaborative writing editor. Connect to documents, read, edit, format, and insert content in real-time. Includes MCP App for live document preview.",
   "type": "module",
   "main": "server.js",
   "bin": {
     "drafts-mcp": "server.js"
+  },
+  "scripts": {
+    "copy:shared-css": "cp ../src/editor-shared.css app/editor-shared.css 2>/dev/null || cp app/editor-shared.css app/editor-shared.css 2>/dev/null || true",
+    "build:app": "npm run copy:shared-css && cd app && cross-env INPUT=mcp-app.html vite build",
+    "build": "npm run build:app",
+    "watch:app": "cd app && cross-env INPUT=mcp-app.html vite build --watch",
+    "dev": "concurrently \"npm run watch:app\" \"node server.js\"",
+    "start": "npm run build && node server.js",
+    "start:http": "npm run build && node server.js --http",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
@@ -14,16 +24,55 @@
     "editor",
     "collaborative",
     "ai",
-    "drafts"
+    "drafts",
+    "mcp-app"
+  ],
+  "files": [
+    "server.js",
+    "dist/",
+    "app/editor-shared.css",
+    "app/mcp-app.html",
+    "app/mcp-app.tsx",
+    "app/main.tsx",
+    "app/global.css",
+    "app/vite.config.ts",
+    "app/tsconfig.json",
+    "package.json",
+    "README.md"
   ],
   "license": "MIT",
   "dependencies": {
     "@hocuspocus/provider": "^3.4.4",
+    "@modelcontextprotocol/ext-apps": "^1.0.0",
     "@modelcontextprotocol/sdk": "latest",
+    "@platejs/basic-nodes": "^52.0.11",
+    "@platejs/link": "^52.0.11",
+    "@platejs/list": "^52.0.11",
+    "@platejs/media": "^52.0.11",
+    "@platejs/table": "^52.0.11",
+    "@platejs/yjs": "^52.0.13",
     "@slate-yjs/core": "^1.0.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "platejs": "^52.3.4",
     "slate": "^0.123.0",
+    "slate-dom": "^0.123.0",
+    "slate-react": "^0.123.0",
     "ws": "^8.0.0",
     "yjs": "^13.6.30",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.0"
   }
 }

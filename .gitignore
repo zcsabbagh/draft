@@ -26,3 +26,10 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Test output
+test-results
+e2e/screenshots
+
+# MCP App build artifacts
+mcp/app/editor-shared.css

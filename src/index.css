@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./editor-shared.css";
 
 @theme {
   --color-cream: #FAFAF8;

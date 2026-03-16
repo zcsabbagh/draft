@@ -1,0 +1,159 @@
+/*
+ * Shared editor styles — imported by both the main app (index.css)
+ * and the MCP App (mcp/app/global.css) to keep them in sync.
+ *
+ * Do NOT use Tailwind directives here — this must be plain CSS.
+ */
+
+/* ── CSS Variables (design tokens) ── */
+
+:root {
+  --color-cream: #FAFAF8;
+  --color-cream-dark: #F0F0EC;
+  --color-ink: #2C2C2C;
+  --color-ink-light: #6B6B6B;
+  --color-ink-lighter: #9B9B9B;
+  --color-border: #E5E5E0;
+}
+
+/* ── A4 page layout ── */
+
+.page-background {
+  background: #FAF9F5;
+  padding: 40px 0 80px;
+}
+
+.page-container {
+  width: 816px;
+  max-width: 100%;
+  min-height: 1056px;
+  margin: 0 auto;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 6px 20px rgba(0,0,0,0.06);
+  border-radius: 2px;
+  position: relative;
+}
+
+.page-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 1055px,
+    white 1055px, white 1056px,
+    #FAF9F5 1056px, #FAF9F5 1076px,
+    white 1076px, white 1077px,
+    transparent 1077px
+  );
+  background-size: 100% 1077px;
+}
+
+.page-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 1055px,
+    #E5E5E0 1055px, #E5E5E0 1056px,
+    transparent 1056px, transparent 1076px,
+    #E5E5E0 1076px, #E5E5E0 1077px,
+    transparent 1077px
+  );
+  background-size: 100% 1077px;
+}
+
+.page-content {
+  padding: 96px;
+  min-height: 1056px;
+  position: relative;
+}
+
+/* ── Editor typography ── */
+
+[data-slate-editor] {
+  font-family: 'Georgia', 'Times New Roman', 'Iowan Old Style', 'Palatino Linotype', serif;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--color-ink);
+  outline: none;
+}
+
+[data-slate-editor] [data-slate-placeholder] {
+  color: var(--color-ink-lighter) !important;
+  font-style: italic;
+  opacity: 1 !important;
+}
+
+/* ── Tables ── */
+
+.slate-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+}
+
+.slate-table td,
+.slate-table th {
+  border: 1px solid var(--color-border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.slate-table th {
+  background: var(--color-cream-dark);
+  font-weight: 600;
+}
+
+/* ── Images ── */
+
+.slate-image-wrapper {
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: visible;
+}
+
+.slate-image-wrapper img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+  cursor: default;
+  transition: box-shadow 0.15s ease;
+}
+
+/* ── Mobile overrides ── */
+
+@media (max-width: 767px) {
+  .page-background { padding: 0; }
+  .page-container { width: 100%; min-height: auto; box-shadow: none; border-radius: 0; }
+  .page-content { padding: 20px 16px; min-height: auto; }
+  .page-container::before {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0px, transparent 1055px,
+      var(--color-border) 1055.5px, transparent 1056px,
+      transparent 1077px
+    );
+    background-size: 100% 1077px;
+  }
+  .page-container::after { display: none; }
+  [data-slate-editor] { font-size: 16px; line-height: 1.6; }
+}
+
+/* ── Print ── */
+
+@media print {
+  .page-background { background: white; padding: 0; }
+  .page-container { box-shadow: none; border-radius: 0; width: 100%; }
+}
