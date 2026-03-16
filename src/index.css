@@ -157,6 +157,16 @@ body {
     margin-right: -20px;
     padding-right: 20px;
   }
+
+  /* Black text selection highlight on mobile */
+  ::selection {
+    background: rgba(44, 44, 44, 0.85);
+    color: #FAFAF8;
+  }
+  ::-moz-selection {
+    background: rgba(44, 44, 44, 0.85);
+    color: #FAFAF8;
+  }
 }
 
 /* Page break element */
@@ -797,6 +807,75 @@ input[type="range"]::-webkit-slider-thumb {
   padding: 2px 6px;
   background: rgba(0,0,0,0.04);
   border-radius: 4px;
+}
+
+/* ── Feedback reading shimmer — flows through text while reviewers read ── */
+
+@keyframes feedback-shimmer-sweep {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes feedback-glow-pulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.feedback-reading {
+  position: relative;
+}
+
+.feedback-reading::before,
+.feedback-reading::after {
+  pointer-events: none;
+}
+
+/* Primary shimmer — warm persona colors sweep diagonally */
+.feedback-reading [data-slate-editor] {
+  position: relative;
+}
+
+.feedback-reading [data-slate-editor]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 30%,
+    rgba(232, 168, 124, 0.12) 36%,
+    rgba(212, 114, 106, 0.14) 42%,
+    rgba(123, 104, 168, 0.13) 48%,
+    rgba(91, 143, 168, 0.12) 54%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation:
+    feedback-shimmer-sweep 3s cubic-bezier(0.4, 0, 0.2, 1) infinite,
+    feedback-glow-pulse 2s ease-in-out infinite;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+
+/* Soft ambient glow on the page edges */
+.feedback-reading.page-container {
+  box-shadow:
+    0 1px 4px rgba(0,0,0,0.06),
+    0 6px 20px rgba(0,0,0,0.06),
+    0 0 40px rgba(232, 168, 124, 0.08),
+    0 0 80px rgba(123, 104, 168, 0.06);
+  transition: box-shadow 600ms ease-out;
 }
 
 /* Collaborative cursor blink animation */
