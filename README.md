@@ -2,6 +2,12 @@
 
 A rich text writing editor with AI feedback, built on React, Plate.js, and Claude. Includes an MCP server with a live document preview app.
 
+![Draft Web Editor](docs/images/draft-web-editor.png)
+
+### MCP App — Live editor preview inside Claude
+
+![Draft MCP App in Claude.ai](docs/images/draft-mcp-app.png)
+
 ## Quick Start
 
 ```bash
