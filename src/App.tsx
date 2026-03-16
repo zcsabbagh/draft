@@ -609,24 +609,8 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         {/* Editor panel */}
         <div className={`${sidebarOpen ? 'w-[70%]' : 'w-full'} flex flex-col overflow-hidden transition-all duration-300 relative`}>
-          {isViewingHistory ? (
-            <div className="relative">
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 text-xs bg-cream-dark/90 text-ink-lighter px-3 py-1 rounded-full border border-border">
-                Read-only snapshot
-              </div>
-              <Editor
-                key={`snapshot-${timelineIndex}`}
-                comments={[]}
-                activeCommentId={null}
-                onCommentClick={() => {}}
-                onChange={() => {}}
-                readOnly
-                initialValue={snapshots[timelineIndex]?.value as unknown[]}
-                fontName={fontName}
-                onFontChange={handleFontChange}
-              />
-            </div>
-          ) : (
+          {/* Main editor — always mounted to avoid Yjs remount crashes */}
+          <div style={{ display: isViewingHistory ? 'none' : undefined }} className="flex flex-col flex-1 overflow-hidden">
             <Editor
               key={`editor-${editorKey}`}
               comments={comments}
@@ -647,6 +631,25 @@ export default function App() {
               collabUrl={import.meta.env.VITE_COLLAB_URL || undefined}
               documentId={documentId}
             />
+          </div>
+          {/* Read-only snapshot overlay */}
+          {isViewingHistory && (
+            <div className="relative flex flex-col flex-1 overflow-hidden">
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 text-xs bg-cream-dark/90 text-ink-lighter px-3 py-1 rounded-full border border-border">
+                Read-only snapshot
+              </div>
+              <Editor
+                key={`snapshot-${timelineIndex}`}
+                comments={[]}
+                activeCommentId={null}
+                onCommentClick={() => {}}
+                onChange={() => {}}
+                readOnly
+                initialValue={snapshots[timelineIndex]?.value as unknown[]}
+                fontName={fontName}
+                onFontChange={handleFontChange}
+              />
+            </div>
           )}
         </div>
 
