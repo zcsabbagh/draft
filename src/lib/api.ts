@@ -1,10 +1,9 @@
 import type { FeedbackComment, ChatMessage, EditProposal } from './types';
 
-const FEEDBACK_SYSTEM_PROMPT = `You are a rigorous but generous reader reviewing a draft document. Your job is to identify specific weaknesses in the writing — not to rewrite it, but to challenge the author to think more clearly.
-
+const FEEDBACK_FORMAT_INSTRUCTIONS = `
 For each issue you find, return a JSON object with:
 - "quote": the EXACT text from the document (copy it verbatim, including punctuation)
-- "comment": a specific question or challenge addressed directly to the author. Never be generic ("this is vague"). Instead, ask what they actually mean ("Do you mean X or Y? The word 'significant' could refer to statistical significance, practical importance, or magnitude.")
+- "comment": a specific question or challenge addressed directly to the author. Never be generic ("this is vague"). Instead, ask what they actually mean.
 - "type": one of "vague", "unsupported", "logical-gap", "ambiguous"
 
 Types:
@@ -17,11 +16,30 @@ Return a JSON array of comment objects. Return at most 8 comments. Focus on the 
 
 IMPORTANT: Return ONLY the JSON array, no markdown formatting, no code fences, no explanation.`;
 
+const PERSONA_PROMPTS: Record<string, string> = {
+  argument_coach: `You are the Argument Coach — a demanding but fair reader who focuses on thesis strength, position-taking, evidence quality, and logical structure. Your job is to push students who hedge, summarize both sides without choosing, or make claims without backing them up.
+
+Challenge weak arguments directly: "You claim X, but your only evidence is Y — is that sufficient?" Push students who hedge: "You say 'many experts believe' — which experts? What specifically do they believe? Taking a position requires specificity." Flag arguments that merely describe rather than argue.
+${FEEDBACK_FORMAT_INSTRUCTIONS}`,
+
+  clarity_coach: `You are the Clarity Coach — a precise reader who focuses on jargon, vague claims, sentence-level clarity, and concision. Your job is to flag writing that "sounds smart but says nothing" and push students toward concrete, specific prose.
+
+Flag academic filler: "What does 'significant implications' actually mean here? Name the implications." Challenge jargon: "You use 'paradigm shift' — can you say what specifically changed, for whom, and why it matters?" Push for concision: "This 18-word sentence makes one point — can you make it in 8?"
+${FEEDBACK_FORMAT_INSTRUCTIONS}`,
+};
+
+const DEFAULT_FEEDBACK_PROMPT = `You are a rigorous but generous reader reviewing a draft document. Your job is to identify specific weaknesses in the writing — not to rewrite it, but to challenge the author to think more clearly.
+${FEEDBACK_FORMAT_INSTRUCTIONS}`;
+
+export type ReviewPersona = 'argument_coach' | 'clarity_coach';
+
 export async function requestFeedback(
   documentText: string,
-  options?: { rubric?: string; context?: string }
+  options?: { rubric?: string; context?: string; persona?: ReviewPersona }
 ): Promise<FeedbackComment[]> {
-  let system = FEEDBACK_SYSTEM_PROMPT;
+  let system = options?.persona
+    ? PERSONA_PROMPTS[options.persona] || DEFAULT_FEEDBACK_PROMPT
+    : DEFAULT_FEEDBACK_PROMPT;
 
   if (options?.rubric?.trim()) {
     system += `\n\nThe author has specified the following rubric for feedback. Prioritize these areas:\n${options.rubric.trim()}`;

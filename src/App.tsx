@@ -3,18 +3,23 @@ import Editor from './components/Editor';
 import ChatPanel from './components/ChatPanel';
 import TimelineScrubber from './components/TimelineScrubber';
 import { requestFeedback, chatWithClaude, chatAboutDocumentStream, getCitation } from './lib/api';
-import type { Citation } from './lib/api';
+import type { Citation, ReviewPersona } from './lib/api';
 import { getFontByName, loadGoogleFont } from './lib/fonts';
 import { useIsMobile } from './hooks/useIsMobile';
+import { getSessionId } from './lib/session';
+import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, logSuggestionRejected, saveSnapshot } from './lib/logger';
 import type {
   FeedbackComment,
   CommentThread,
   DocumentSnapshot,
 } from './lib/types';
 
+import SubmitDialog from './components/SubmitDialog';
+import { submitDocument } from './lib/logger';
+
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
-const ImportDialog = lazy(() => import('./components/ImportDialog'));
-const ImportNotionDialog = lazy(() => import('./components/ImportNotionDialog'));
+// const ImportDialog = lazy(() => import('./components/ImportDialog'));
+// const ImportNotionDialog = lazy(() => import('./components/ImportNotionDialog'));
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
 const Agentation = lazy(() => import('agentation').then(m => ({ default: m.Agentation })));
 
@@ -98,6 +103,9 @@ export default function App() {
   const [zoom, setZoom] = useState(100);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(INITIAL_VALUE);
+  const [selectedPersona, setSelectedPersona] = useState<ReviewPersona>('argument_coach');
+  const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   const [shimmerFading, setShimmerFading] = useState(false);
@@ -107,6 +115,11 @@ export default function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const plateEditorRef = useRef<any>(null);
   const snapshotTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  // Initialize anonymous session on first load
+  useEffect(() => {
+    getSessionId();
+  }, []);
 
   // Load the persisted Google Font on mount
   useEffect(() => {
@@ -149,6 +162,20 @@ export default function App() {
     return () => clearInterval(snapshotTimerRef.current);
   }, []);
 
+  // Supabase auto-snapshot every 60 seconds (for study timeline reconstruction)
+  useEffect(() => {
+    let lastSnapshotText = '';
+    const timer = setInterval(() => {
+      const val = editorValueRef.current;
+      const text = extractText(val);
+      if (text !== lastSnapshotText && text.trim().length > 0) {
+        lastSnapshotText = text;
+        saveSnapshot(val, text.split(/\s+/).length, 'auto');
+      }
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   const handleEditorChange = useCallback((value: unknown[]) => {
     editorValueRef.current = value;
   }, []);
@@ -185,8 +212,18 @@ export default function App() {
     setThreads({});
 
     try {
-      const feedbackComments = await requestFeedback(text, { rubric, context });
+      // Log pre-feedback snapshot + request
+      saveSnapshot(editorValueRef.current, text.split(/\s+/).length, 'pre_feedback');
+      logFeedbackRequest(text, selectedPersona);
+
+      const feedbackComments = await requestFeedback(text, { rubric, context, persona: selectedPersona });
       setComments(feedbackComments);
+
+      // Log each feedback received
+      for (const c of feedbackComments) {
+        logFeedbackReceived(c.quote, c.comment, selectedPersona);
+      }
+      saveSnapshot(editorValueRef.current, text.split(/\s+/).length, 'post_feedback');
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -194,7 +231,7 @@ export default function App() {
       setShimmerFading(true);
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
-  }, [rubric, context]);
+  }, [rubric, context, selectedPersona]);
 
   const handleFeedbackSelection = useCallback(async (selectedText: string) => {
     if (!selectedText.trim()) return;
@@ -209,8 +246,16 @@ export default function App() {
     setSidebarOpen(true);
 
     try {
-      const feedbackComments = await requestFeedback(selectedText, { rubric, context });
+      saveSnapshot(editorValueRef.current, extractText(editorValueRef.current).split(/\s+/).length, 'pre_feedback');
+      logFeedbackRequest(selectedText, selectedPersona);
+
+      const feedbackComments = await requestFeedback(selectedText, { rubric, context, persona: selectedPersona });
       setComments(feedbackComments);
+
+      for (const c of feedbackComments) {
+        logFeedbackReceived(c.quote, c.comment, selectedPersona);
+      }
+      saveSnapshot(editorValueRef.current, extractText(editorValueRef.current).split(/\s+/).length, 'post_feedback');
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -218,7 +263,7 @@ export default function App() {
       setShimmerFading(true);
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
-  }, [rubric, context]);
+  }, [rubric, context, selectedPersona]);
 
   const handleSendMessage = useCallback(
     async (commentId: string, message: string) => {
@@ -348,6 +393,7 @@ export default function App() {
   }, [exportMenuOpen]);
 
   const handleEditAccept = useCallback((originalText: string, newText: string) => {
+    logSuggestionAccepted(originalText, newText);
     const val = editorValueRef.current;
     const updated = JSON.parse(
       JSON.stringify(val).replace(
@@ -404,6 +450,18 @@ export default function App() {
       setTimeout(() => setShareState('idle'), 1600);
     });
   }, [documentId, title]);
+
+  const handleSubmitEssay = useCallback(async (studentName: string, studentIdNumber: string) => {
+    const content = editorValueRef.current;
+    const text = extractText(content);
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    const result = await submitDocument(studentName, studentIdNumber, content, wordCount);
+    if (!result.success) {
+      throw new Error(result.error || 'Submission failed');
+    }
+    setSubmitDialogOpen(false);
+    setSubmitted(true);
+  }, []);
 
   const handleNewDocument = useCallback(() => {
     const newId = generateDocumentId();
@@ -641,6 +699,31 @@ export default function App() {
                 </span>
               )}
             </button>
+            {submitted ? (
+              <span className="text-sm px-4 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 font-medium flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Submitted
+              </span>
+            ) : (
+              <button
+                onClick={() => setSubmitDialogOpen(true)}
+                className="text-sm px-4 py-1.5 rounded-lg border-2 border-green-600 text-green-700 font-medium hover:bg-green-50 transition-colors press-scale"
+              >
+                Submit
+              </button>
+            )}
+            <div className="flex items-center rounded-lg border border-border overflow-hidden">
+              <select
+                value={selectedPersona}
+                onChange={(e) => setSelectedPersona(e.target.value as ReviewPersona)}
+                className="text-xs px-2 py-1.5 bg-cream-dark border-none outline-none text-ink font-medium cursor-pointer"
+              >
+                <option value="argument_coach">Argument Coach</option>
+                <option value="clarity_coach">Clarity Coach</option>
+              </select>
+            </div>
             <button
               onClick={handleRequestFeedback}
               disabled={isLoading}
@@ -713,6 +796,14 @@ export default function App() {
               {mobileMenuOpen && (
                 <div className="absolute right-0 top-full pt-1 z-50">
                   <div className="w-48 bg-cream rounded-lg border border-border shadow-lg py-1 px-1 animate-dropdown-open">
+                    {submitted ? (
+                      <div className="px-3 py-2.5 text-sm text-green-700 font-medium rounded-md flex items-center gap-2">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        Submitted
+                      </div>
+                    ) : (
+                      <button onClick={() => { setMobileMenuOpen(false); setSubmitDialogOpen(true); }} className="w-full text-left px-3 py-2.5 text-sm text-green-700 font-medium hover:bg-green-50 transition-colors rounded-md">Submit Essay</button>
+                    )}
                     <button onClick={() => { setMobileMenuOpen(false); handleNewDocument(); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">New Document</button>
                     <button onClick={() => { setMobileMenuOpen(false); handleShare(); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">Share</button>
                     <button onClick={() => { setMobileMenuOpen(false); setImportDialogOpen(true); }} className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors rounded-md">Import from Google Docs</button>
@@ -839,7 +930,15 @@ export default function App() {
         )}
       </div>
 
+      {/* Submit dialog */}
+      <SubmitDialog
+        open={submitDialogOpen}
+        onClose={() => setSubmitDialogOpen(false)}
+        onSubmit={handleSubmitEssay}
+      />
+
       {/* Lazy-loaded dialogs — only fetched when first opened (bundle-dynamic-imports) */}
+      {/* Import dialogs commented out for study deployment
       {importDialogOpen && (
         <Suspense fallback={null}>
           <ImportDialog
@@ -858,6 +957,7 @@ export default function App() {
           />
         </Suspense>
       )}
+      */}
       {import.meta.env.DEV && (
         <Suspense fallback={null}>
           <Agentation />
