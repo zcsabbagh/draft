@@ -7,7 +7,7 @@ import type { Citation } from './lib/api';
 import { getFontByName, loadGoogleFont } from './lib/fonts';
 import { useIsMobile } from './hooks/useIsMobile';
 import { getSessionId } from './lib/session';
-import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, logCitationRequest, logTranslateRequest, logEditProposed, saveSnapshot } from './lib/logger';
+import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, logCitationRequest, logTranslateRequest, logEditProposed, logThreadMessageSent, logThreadReplyReceived, logChatMessageSent, logChatReplyReceived, saveSnapshot } from './lib/logger';
 import type {
   FeedbackComment,
   CommentThread,
@@ -281,9 +281,11 @@ export default function App() {
       }));
 
       setIsChatLoading(true);
+      logThreadMessageSent(commentId, message);
       try {
         const docText = extractText(editorValueRef.current);
         const reply = await chatWithClaude(docText, comment, updatedMessages);
+        logThreadReplyReceived(commentId, reply);
         setThreads((prev) => ({
           ...prev,
           [commentId]: {
@@ -426,8 +428,11 @@ export default function App() {
   }, []);
 
   const handleChatMessage = useCallback(async (message: string, history: { role: 'user' | 'assistant'; content: string }[], onChunk: (text: string) => void) => {
+    logChatMessageSent(message);
     const docText = extractText(editorValueRef.current);
-    return chatAboutDocumentStream(docText, message, history, onChunk);
+    const reply = await chatAboutDocumentStream(docText, message, history, onChunk);
+    logChatReplyReceived(reply);
+    return reply;
   }, []);
 
   const handleShare = useCallback(async () => {
@@ -581,11 +586,10 @@ export default function App() {
             >
               <span className={`inline-flex items-center gap-1.5 transition-[opacity,transform] duration-300 ${shareState === 'copied' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M5.5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  <path d="M8 1.5h4.5V6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M12.5 1.5L7 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  <rect x="5" y="5" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M9 5V3.5A1.5 1.5 0 0 0 7.5 2H3.5A1.5 1.5 0 0 0 2 3.5v4A1.5 1.5 0 0 0 3.5 9H5" stroke="currentColor" strokeWidth="1.3" />
                 </svg>
-                Copy Link
+                Copy
               </span>
               {shareState === 'copied' && (
                 <span className="absolute inset-0 flex items-center justify-center text-sm font-medium">

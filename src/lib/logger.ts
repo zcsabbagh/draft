@@ -12,7 +12,11 @@ type EventType =
   | 'edit_proposed'
   | 'edit_rejected'
   | 'translate_request'
-  | 'citation_request';
+  | 'citation_request'
+  | 'chat_message_sent'
+  | 'chat_reply_received'
+  | 'thread_message_sent'
+  | 'thread_reply_received';
 
 interface EventData {
   persona?: string;
@@ -98,6 +102,24 @@ export function logTranslateRequest(selectedText: string, targetLanguage: string
 
 export function logCitationRequest(selectedText: string): void {
   logEvent('citation_request', { selected_text: selectedText });
+}
+
+// ── Chat logging ──
+
+export function logThreadMessageSent(commentId: string, message: string): void {
+  logEvent('thread_message_sent', { metadata: { comment_id: commentId }, selected_text: message });
+}
+
+export function logThreadReplyReceived(commentId: string, reply: string): void {
+  logEvent('thread_reply_received', { metadata: { comment_id: commentId }, ai_feedback: reply });
+}
+
+export function logChatMessageSent(message: string): void {
+  logEvent('chat_message_sent', { selected_text: message });
+}
+
+export function logChatReplyReceived(reply: string): void {
+  logEvent('chat_reply_received', { ai_feedback: reply });
 }
 
 // ── Document snapshots ──

@@ -144,18 +144,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
         </svg>
         Edit
       </button>
-      <div className="w-px h-4 bg-cream/20" />
-      <button
-        onClick={handleCite}
-        disabled={citing}
-        className="flex items-center gap-1.5 text-xs text-cream/90 hover:text-cream px-2.5 py-1.5 rounded transition-colors press-scale disabled:opacity-50"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 3C2 2.44772 2.44772 2 3 2H5L6 3H9C9.55228 3 10 3.44772 10 4V9C10 9.55228 9.55228 10 9 10H3C2.44772 10 2 9.55228 2 9V3Z" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M4.5 6.5L5.5 7.5L7.5 5.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {citing ? 'Citing...' : 'Get Citation'}
-      </button>
+      {/* Citation button removed for study deployment */}
       {onFeedback && (
         <>
           <div className="w-px h-4 bg-cream/20" />
