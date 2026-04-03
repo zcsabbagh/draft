@@ -17,7 +17,7 @@ import type {
 import SubmitDialog from './components/SubmitDialog';
 import TemplatePage from './components/TemplatePage';
 import { submitDocument } from './lib/logger';
-import { saveTemplate } from './lib/templates';
+import { saveTemplate, getTemplate } from './lib/templates';
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
@@ -131,6 +131,24 @@ export default function App() {
   // Initialize anonymous session on first load
   useEffect(() => {
     getSessionId();
+  }, []);
+
+  // Load template content if opened via "Make a Copy" (?from_template=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromTemplate = params.get('from_template');
+    if (!fromTemplate) return;
+    // Clean the URL param without triggering navigation
+    window.history.replaceState(null, '', window.location.pathname);
+    getTemplate(fromTemplate).then((t) => {
+      if (!t) return;
+      const copyTitle = `Copy of ${t.title}`;
+      setTitle(copyTitle);
+      localStorage.setItem('draft-title', copyTitle);
+      setEditorInitialValue(t.content as unknown[]);
+      editorValueRef.current = t.content as unknown[];
+      setEditorKey((k) => k + 1);
+    });
   }, []);
 
   // Load the persisted Google Font on mount

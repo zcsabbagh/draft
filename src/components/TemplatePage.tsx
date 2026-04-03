@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Template } from '../lib/templates';
 import { getTemplate } from '../lib/templates';
 import Editor from './Editor';
@@ -6,6 +6,15 @@ import Editor from './Editor';
 interface TemplatePageProps {
   templateId: string;
   onCopy: (title: string, content: unknown[]) => void;
+}
+
+function generateDocumentId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < 10; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return id;
 }
 
 export default function TemplatePage({ templateId, onCopy }: TemplatePageProps) {
@@ -23,6 +32,14 @@ export default function TemplatePage({ templateId, onCopy }: TemplatePageProps) 
       setLoading(false);
     });
   }, [templateId]);
+
+  const handleCopy = useCallback(() => {
+    if (!template) return;
+    const newId = generateDocumentId();
+    // Open copy in a new tab with template reference
+    const url = `${window.location.origin}/d/${newId}?from_template=${templateId}`;
+    window.open(url, '_blank');
+  }, [template, templateId]);
 
   if (loading) {
     return (
@@ -61,7 +78,7 @@ export default function TemplatePage({ templateId, onCopy }: TemplatePageProps) 
           </span>
         </div>
         <button
-          onClick={() => onCopy(template.title, template.content as unknown[])}
+          onClick={handleCopy}
           className="text-sm px-5 py-2 rounded-lg bg-ink text-cream font-medium hover:bg-ink-light transition-colors press-scale flex items-center gap-2"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
