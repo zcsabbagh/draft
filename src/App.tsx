@@ -89,7 +89,7 @@ function generateDocumentId(): string {
 
 export default function App() {
   const [documentId, setDocumentId] = useState(getDocumentIdFromUrl);
-  const [title, setTitle] = useState(() => localStorage.getItem('draft-title') || 'Untitled Document');
+  const [title, setTitle] = useState(() => localStorage.getItem(`draft-title-${getDocumentIdFromUrl()}`) || localStorage.getItem('draft-title') || 'Untitled Document');
   const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
   const [comments, setComments] = useState<FeedbackComment[]>([]);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
@@ -113,7 +113,14 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(!IS_EMBED);
   const [zoom, setZoom] = useState(100);
   const [citations, setCitations] = useState<Citation[]>([]);
-  const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(INITIAL_VALUE);
+  const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(() => {
+    // Load persisted content for this document
+    try {
+      const saved = localStorage.getItem(`draft-content-${getDocumentIdFromUrl()}`);
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore parse errors */ }
+    return INITIAL_VALUE;
+  });
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -124,7 +131,7 @@ export default function App() {
   const [shimmerFading, setShimmerFading] = useState(false);
   const shimmerTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const editorValueRef = useRef<unknown[]>(INITIAL_VALUE);
+  const editorValueRef = useRef<unknown[]>(editorInitialValue);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const plateEditorRef = useRef<any>(null);
   const snapshotTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -219,12 +226,17 @@ export default function App() {
 
   const handleEditorChange = useCallback((value: unknown[]) => {
     editorValueRef.current = value;
-  }, []);
+    // Persist content to localStorage for this document
+    try {
+      localStorage.setItem(`draft-content-${documentId}`, JSON.stringify(value));
+    } catch { /* quota exceeded — ignore */ }
+  }, [documentId]);
 
   const handleTitleChange = useCallback((value: string) => {
     setTitle(value);
-    localStorage.setItem('draft-title', value);
-  }, []);
+    localStorage.setItem(`draft-title-${documentId}`, value);
+    localStorage.setItem('draft-title', value); // backward compat
+  }, [documentId]);
 
   const handleRubricChange = useCallback((value: string) => {
     setRubric(value);

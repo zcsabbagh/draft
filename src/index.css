@@ -56,6 +56,7 @@ body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 6px 20px rgba(0,0,0,0.06);
   border-radius: 2px;
   position: relative;
+  isolation: isolate; /* Creates stacking context so ::before overlay covers content */
 }
 
 /* Page break gaps — opaque overlay that covers text flowing between pages.
