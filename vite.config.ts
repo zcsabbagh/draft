@@ -327,23 +327,8 @@ function claudeProxy(): Plugin {
           return;
         }
 
-        // Budget check against collab server
-        try {
-          const budgetRes = await fetch('http://localhost:8888/api/usage/check');
-          if (budgetRes.ok) {
-            const budget = await budgetRes.json() as { allowed: boolean; total_usd: number; limit_usd: number };
-            if (!budget.allowed) {
-              res.statusCode = 429;
-              res.end(JSON.stringify({ error: `Budget limit reached ($${budget.total_usd.toFixed(2)} / $${budget.limit_usd.toFixed(2)})` }));
-              return;
-            }
-          }
-        } catch { /* collab server not running — allow */ }
-
         let body = '';
-        req.on('data', (chunk: Buffer) => {
-          body += chunk.toString();
-        });
+        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
         req.on('end', async () => {
           try {
             const { messages, system, max_tokens, stream } = JSON.parse(body);
@@ -354,6 +339,10 @@ function claudeProxy(): Plugin {
               res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY not set in environment' }));
               return;
             }
+
+            // Cap max_tokens for safety
+            const cappedMaxTokens = Math.min(max_tokens || 1024, 4096);
+            const cappedSystem = typeof system === 'string' ? system.slice(0, 8000) : undefined;
 
             const response = await fetch(
               'https://api.anthropic.com/v1/messages',
@@ -366,8 +355,8 @@ function claudeProxy(): Plugin {
                 },
                 body: JSON.stringify({
                   model: 'claude-sonnet-4-20250514',
-                  max_tokens: max_tokens || 1024,
-                  system,
+                  max_tokens: cappedMaxTokens,
+                  system: cappedSystem,
                   messages,
                   stream: !!stream,
                 }),
@@ -388,25 +377,10 @@ function claudeProxy(): Plugin {
                   if (done) break;
                   res.write(decoder.decode(value, { stream: true }));
                 }
-              } catch {
-                // client disconnected
-              }
+              } catch { /* client disconnected */ }
               res.end();
             } else {
               const data = await response.text();
-              // Log usage to collab server
-              if (response.ok) {
-                try {
-                  const parsed = JSON.parse(data);
-                  if (parsed.usage) {
-                    fetch('http://localhost:8888/api/usage/log', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.ADMIN_SECRET || 'change-me-in-production'}` },
-                      body: JSON.stringify({ input_tokens: parsed.usage.input_tokens, output_tokens: parsed.usage.output_tokens, model: 'claude-sonnet-4-20250514' }),
-                    }).catch(() => {});
-                  }
-                } catch { /* ignore */ }
-              }
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = response.status;
               res.end(data);

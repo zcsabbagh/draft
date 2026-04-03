@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 marked.setOptions({
   breaks: true,
@@ -9,9 +10,9 @@ marked.setOptions({
 export default function MarkdownContent({ content }: { content: string }) {
   const html = useMemo(() => {
     try {
-      return marked.parse(content) as string;
+      return DOMPurify.sanitize(marked.parse(content) as string);
     } catch {
-      return content;
+      return DOMPurify.sanitize(content);
     }
   }, [content]);
 

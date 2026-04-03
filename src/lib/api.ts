@@ -1,4 +1,11 @@
 import type { FeedbackComment, ChatMessage, EditProposal } from './types';
+import { getSessionId } from './session';
+
+/** Get document ID from current URL path */
+function getDocumentId(): string {
+  const match = window.location.pathname.match(/^\/d\/(.+)$/);
+  return match ? decodeURIComponent(match[1]) : 'unknown';
+}
 
 const FEEDBACK_FORMAT_INSTRUCTIONS = `
 For each issue you find, return a JSON object with:
@@ -33,20 +40,21 @@ ${FEEDBACK_FORMAT_INSTRUCTIONS}`;
 
 export type ReviewPersona = 'argument_coach' | 'clarity_coach';
 
-export async function requestFeedback(
+const ALL_PERSONAS: ReviewPersona[] = ['argument_coach', 'clarity_coach'];
+
+async function fetchFeedbackForPersona(
   documentText: string,
-  options?: { rubric?: string; context?: string; persona?: ReviewPersona }
+  persona: ReviewPersona,
+  rubric?: string,
+  context?: string,
 ): Promise<FeedbackComment[]> {
-  let system = options?.persona
-    ? PERSONA_PROMPTS[options.persona] || DEFAULT_FEEDBACK_PROMPT
-    : DEFAULT_FEEDBACK_PROMPT;
+  let system = PERSONA_PROMPTS[persona];
 
-  if (options?.rubric?.trim()) {
-    system += `\n\nThe author has specified the following rubric for feedback. Prioritize these areas:\n${options.rubric.trim()}`;
+  if (rubric?.trim()) {
+    system += `\n\nThe author has specified the following rubric for feedback. Prioritize these areas:\n${rubric.trim()}`;
   }
-
-  if (options?.context?.trim()) {
-    system += `\n\nAdditional context about the document provided by the author:\n${options.context.trim()}`;
+  if (context?.trim()) {
+    system += `\n\nAdditional context about the document provided by the author:\n${context.trim()}`;
   }
 
   const response = await fetch('/api/claude', {
@@ -56,6 +64,9 @@ export async function requestFeedback(
       messages: [{ role: 'user', content: documentText }],
       system,
       max_tokens: 2048,
+      session_id: getSessionId(),
+      document_id: getDocumentId(),
+      request_type: `feedback_${persona}`,
     }),
   });
 
@@ -67,7 +78,21 @@ export async function requestFeedback(
   const data = await response.json();
   const text = data.content[0].text;
   const comments: FeedbackComment[] = JSON.parse(text);
-  return comments.map((c, i) => ({ ...c, id: `comment-${Date.now()}-${i}` }));
+  return comments.map((c, i) => ({ ...c, id: `comment-${persona}-${Date.now()}-${i}` }));
+}
+
+export async function requestFeedback(
+  documentText: string,
+  options?: { rubric?: string; context?: string }
+): Promise<FeedbackComment[]> {
+  // Run both personas in parallel, merge results
+  const results = await Promise.all(
+    ALL_PERSONAS.map(persona =>
+      fetchFeedbackForPersona(documentText, persona, options?.rubric, options?.context)
+        .catch(() => [] as FeedbackComment[])
+    )
+  );
+  return results.flat();
 }
 
 export async function chatWithClaude(
@@ -101,6 +126,9 @@ Help the author work through this specific issue. Ask clarifying questions. Sugg
       messages,
       system,
       max_tokens: 1024,
+      session_id: getSessionId(),
+      document_id: getDocumentId(),
+      request_type: 'chat',
     }),
   });
 
@@ -136,7 +164,7 @@ Help the user with questions about their document, brainstorm ideas, suggest imp
   const response = await fetch('/api/claude', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system, max_tokens: 1024, stream: true }),
+    body: JSON.stringify({ messages, system, max_tokens: 1024, stream: true, session_id: getSessionId(), document_id: getDocumentId(), request_type: 'stream_chat' }),
   });
 
   if (!response.ok) {
@@ -240,6 +268,9 @@ export async function translateText(
       }],
       system: TRANSLATE_SYSTEM_PROMPT,
       max_tokens: 2048,
+      session_id: getSessionId(),
+      document_id: getDocumentId(),
+      request_type: 'translate',
     }),
   });
 
@@ -282,6 +313,9 @@ export async function proposeEdit(
       }],
       system: EDIT_SYSTEM_PROMPT,
       max_tokens: 2048,
+      session_id: getSessionId(),
+      document_id: getDocumentId(),
+      request_type: 'edit',
     }),
   });
 
@@ -338,6 +372,9 @@ Current proposed edit: "${currentProposal}"`;
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
       system,
       max_tokens: 2048,
+      session_id: getSessionId(),
+      document_id: getDocumentId(),
+      request_type: 'edit_chat',
     }),
   });
 

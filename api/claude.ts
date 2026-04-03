@@ -1,33 +1,64 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 
-const USAGE_API = process.env.VITE_COLLAB_URL
-  ? process.env.VITE_COLLAB_URL.replace('wss://', 'https://').replace('ws://', 'http://')
-  : null;
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'change-me-in-production';
+const MAX_TOKENS_CAP = 4096;
+const MAX_SYSTEM_LENGTH = 8000;
+const MAX_REQUESTS_PER_DOC = 50;
+const BUDGET_LIMIT_USD = 1000;
 
-async function checkBudget(): Promise<{ allowed: boolean; remaining_usd: number; total_usd: number; limit_usd: number }> {
-  if (!USAGE_API) return { allowed: true, remaining_usd: 999, total_usd: 0, limit_usd: 999 };
+// Supabase for cost tracking and rate limiting
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+
+function calculateCost(inputTokens: number, outputTokens: number): number {
+  // Claude Sonnet 4: $3/M input, $15/M output
+  return (inputTokens * 3 + outputTokens * 15) / 1_000_000;
+}
+
+async function checkBudget(documentId?: string): Promise<{ allowed: boolean; reason?: string }> {
+  if (!supabase) return { allowed: true };
+
   try {
-    const res = await fetch(`${USAGE_API}/api/usage/check`);
-    if (!res.ok) return { allowed: true, remaining_usd: 999, total_usd: 0, limit_usd: 999 };
-    return await res.json();
+    // Check total spend
+    const { data: costData } = await supabase.from('api_usage').select('cost_usd');
+    const totalCost = (costData ?? []).reduce((sum, r) => sum + Number(r.cost_usd), 0);
+    if (totalCost >= BUDGET_LIMIT_USD) {
+      return { allowed: false, reason: `Total budget exceeded ($${totalCost.toFixed(2)} / $${BUDGET_LIMIT_USD})` };
+    }
+
+    // Check per-document limit
+    if (documentId) {
+      const { count } = await supabase
+        .from('api_usage')
+        .select('id', { count: 'exact', head: true })
+        .eq('document_id', documentId);
+      if ((count ?? 0) >= MAX_REQUESTS_PER_DOC) {
+        return { allowed: false, reason: `Document request limit reached (${count}/${MAX_REQUESTS_PER_DOC})` };
+      }
+    }
+
+    return { allowed: true };
   } catch {
-    // If usage API is down, allow requests (fail open for dev)
-    return { allowed: true, remaining_usd: 999, total_usd: 0, limit_usd: 999 };
+    // If budget check fails, block (fail closed)
+    return { allowed: false, reason: 'Budget check unavailable' };
   }
 }
 
-async function logUsage(inputTokens: number, outputTokens: number, model: string) {
-  if (!USAGE_API) return;
+async function logUsage(sessionId: string | undefined, documentId: string | undefined, inputTokens: number, outputTokens: number, model: string, requestType: string) {
+  if (!supabase) return;
   try {
-    await fetch(`${USAGE_API}/api/usage/log`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_SECRET}` },
-      body: JSON.stringify({ input_tokens: inputTokens, output_tokens: outputTokens, model }),
+    const cost = calculateCost(inputTokens, outputTokens);
+    await supabase.from('api_usage').insert({
+      session_id: sessionId || null,
+      document_id: documentId || null,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      model,
+      cost_usd: cost,
+      request_type: requestType || 'unknown',
     });
-  } catch {
-    // Non-critical — don't fail the request
-  }
+  } catch { /* non-critical */ }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -40,15 +71,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY not set' });
   }
 
-  // Check budget before making the call
-  const budget = await checkBudget();
+  const { messages, system, max_tokens, stream, session_id, document_id, request_type } = req.body;
+
+  // Input validation
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'messages array required' });
+  }
+  const cappedMaxTokens = Math.min(max_tokens || 1024, MAX_TOKENS_CAP);
+  const cappedSystem = typeof system === 'string' ? system.slice(0, MAX_SYSTEM_LENGTH) : undefined;
+
+  // Budget check (fail closed)
+  const budget = await checkBudget(document_id);
   if (!budget.allowed) {
-    return res.status(429).json({
-      error: `Budget limit reached ($${budget.total_usd.toFixed(2)} / $${budget.limit_usd.toFixed(2)}). Contact the admin to increase the limit.`,
-    });
+    return res.status(429).json({ error: budget.reason });
   }
 
-  const { messages, system, max_tokens, stream } = req.body;
   const model = 'claude-sonnet-4-20250514';
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -60,8 +97,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: max_tokens || 1024,
-      system,
+      max_tokens: cappedMaxTokens,
+      system: cappedSystem,
       messages,
       stream: !!stream,
     }),
@@ -83,15 +120,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fullText += chunk;
         res.write(chunk);
       }
-    } catch {
-      // client disconnected
-    }
+    } catch { /* client disconnected */ }
 
-    // Try to extract usage from the final SSE message
+    // Extract usage from final SSE message and log
     try {
       const usageMatch = fullText.match(/"usage"\s*:\s*\{[^}]*"input_tokens"\s*:\s*(\d+)[^}]*"output_tokens"\s*:\s*(\d+)/);
       if (usageMatch) {
-        logUsage(parseInt(usageMatch[1]), parseInt(usageMatch[2]), model);
+        logUsage(session_id, document_id, parseInt(usageMatch[1]), parseInt(usageMatch[2]), model, request_type);
       }
     } catch { /* ignore */ }
 
@@ -105,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const parsed = JSON.parse(data);
       if (parsed.usage) {
-        logUsage(parsed.usage.input_tokens || 0, parsed.usage.output_tokens || 0, model);
+        logUsage(session_id, document_id, parsed.usage.input_tokens || 0, parsed.usage.output_tokens || 0, model, request_type);
       }
     } catch { /* ignore */ }
   }

@@ -1270,6 +1270,8 @@ export default function Editor({
             onFeedback={onFeedbackSelection}
             onTranslate={async (text, lang) => {
               const { translateText } = await import('../lib/api');
+              const { logTranslateRequest } = await import('../lib/logger');
+              logTranslateRequest(text, lang);
               const translated = await translateText(text, lang);
               // Replace selected text with translation
               const val = (editor as AnyEditor).children;

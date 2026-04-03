@@ -3,11 +3,11 @@ import Editor from './components/Editor';
 import ChatPanel from './components/ChatPanel';
 import TimelineScrubber from './components/TimelineScrubber';
 import { requestFeedback, chatWithClaude, chatAboutDocumentStream, getCitation } from './lib/api';
-import type { Citation, ReviewPersona } from './lib/api';
+import type { Citation } from './lib/api';
 import { getFontByName, loadGoogleFont } from './lib/fonts';
 import { useIsMobile } from './hooks/useIsMobile';
 import { getSessionId } from './lib/session';
-import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, saveSnapshot } from './lib/logger';
+import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, logCitationRequest, logTranslateRequest, logEditProposed, saveSnapshot } from './lib/logger';
 import type {
   FeedbackComment,
   CommentThread,
@@ -105,7 +105,6 @@ export default function App() {
   const [zoom, setZoom] = useState(100);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(INITIAL_VALUE);
-  const [selectedPersona, setSelectedPersona] = useState<ReviewPersona>('argument_coach');
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -217,13 +216,13 @@ export default function App() {
       // Log pre-feedback snapshot + request
       const wc = countWords(text);
       saveSnapshot(editorValueRef.current, wc, 'pre_feedback');
-      logFeedbackRequest(text, selectedPersona);
+      logFeedbackRequest(text);
 
-      const feedbackComments = await requestFeedback(text, { rubric, context, persona: selectedPersona });
+      const feedbackComments = await requestFeedback(text, { rubric, context });
       setComments(feedbackComments);
 
       for (const c of feedbackComments) {
-        logFeedbackReceived(c.quote, c.comment, selectedPersona);
+        logFeedbackReceived(c.quote, c.comment);
       }
       saveSnapshot(editorValueRef.current, wc, 'post_feedback');
     } catch (e) {
@@ -233,7 +232,7 @@ export default function App() {
       setShimmerFading(true);
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
-  }, [rubric, context, selectedPersona]);
+  }, [rubric, context]);
 
   const handleFeedbackSelection = useCallback(async (selectedText: string) => {
     if (!selectedText.trim()) return;
@@ -251,13 +250,13 @@ export default function App() {
       const docText = extractText(editorValueRef.current);
       const wc = countWords(docText);
       saveSnapshot(editorValueRef.current, wc, 'pre_feedback');
-      logFeedbackRequest(selectedText, selectedPersona);
+      logFeedbackRequest(selectedText);
 
-      const feedbackComments = await requestFeedback(selectedText, { rubric, context, persona: selectedPersona });
+      const feedbackComments = await requestFeedback(selectedText, { rubric, context });
       setComments(feedbackComments);
 
       for (const c of feedbackComments) {
-        logFeedbackReceived(c.quote, c.comment, selectedPersona);
+        logFeedbackReceived(c.quote, c.comment);
       }
       saveSnapshot(editorValueRef.current, wc, 'post_feedback');
     } catch (e) {
@@ -267,7 +266,7 @@ export default function App() {
       setShimmerFading(true);
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
-  }, [rubric, context, selectedPersona]);
+  }, [rubric, context]);
 
   const handleSendMessage = useCallback(
     async (commentId: string, message: string) => {
@@ -415,6 +414,7 @@ export default function App() {
   }, []);
 
   const handleCite = useCallback(async (selectedText: string): Promise<number> => {
+    logCitationRequest(selectedText);
     const citation = await getCitation(selectedText);
     // Use functional setState to avoid depending on citations.length (rerender-functional-setstate)
     let nextId = 0;
@@ -717,16 +717,6 @@ export default function App() {
                 Submit
               </button>
             )}
-            <div className="flex items-center rounded-lg border border-border overflow-hidden">
-              <select
-                value={selectedPersona}
-                onChange={(e) => setSelectedPersona(e.target.value as ReviewPersona)}
-                className="text-xs px-2 py-1.5 bg-cream-dark border-none outline-none text-ink font-medium cursor-pointer"
-              >
-                <option value="argument_coach">Argument Coach</option>
-                <option value="clarity_coach">Clarity Coach</option>
-              </select>
-            </div>
             <button
               onClick={handleRequestFeedback}
               disabled={isLoading}
@@ -852,7 +842,7 @@ export default function App() {
               onCite={handleCite}
               onFeedbackSelection={handleFeedbackSelection}
               editorRef={plateEditorRef}
-              collabUrl={import.meta.env.VITE_COLLAB_URL || undefined}
+              /* collabUrl removed — collab server no longer in use, enables native undo */
               documentId={documentId}
               isMobile={isMobile}
               isLoading={isLoading}

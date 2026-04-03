@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { proposeEdit, chatAboutEdit, translateText } from '../lib/api';
+import { logEditProposed, logSuggestionRejected } from '../lib/logger';
 import type { EditProposal, ChatMessage } from '../lib/types';
 
 const TRANSLATE_LANGUAGES = [
@@ -72,6 +73,7 @@ export default function InlineEditPanel({
     setError(null);
 
     try {
+      logEditProposed(selectedText, instruction.trim());
       const result = await proposeEdit(documentText, selectedText, instruction.trim());
       setProposal(result);
       setMessages([

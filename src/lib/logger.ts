@@ -8,7 +8,11 @@ type EventType =
   | 'suggestion_modified'
   | 'suggestion_rejected'
   | 'manual_revision'
-  | 'persona_selected';
+  | 'persona_selected'
+  | 'edit_proposed'
+  | 'edit_rejected'
+  | 'translate_request'
+  | 'citation_request';
 
 interface EventData {
   persona?: string;
@@ -19,9 +23,17 @@ interface EventData {
   metadata?: Record<string, unknown>;
 }
 
+function getBrowserMeta() {
+  return {
+    user_agent: navigator.userAgent,
+    page_url: window.location.href,
+  };
+}
+
 function logEvent(eventType: EventType, data: EventData = {}): void {
   if (!supabase) return;
   const sessionId = getSessionId();
+  const browser = getBrowserMeta();
   supabase.from('interaction_events').insert({
     session_id: sessionId,
     event_type: eventType,
@@ -31,6 +43,8 @@ function logEvent(eventType: EventType, data: EventData = {}): void {
     text_before: data.text_before ?? null,
     text_after: data.text_after ?? null,
     metadata: data.metadata ?? {},
+    user_agent: browser.user_agent,
+    page_url: browser.page_url,
   }).then(({ error }) => {
     if (error) console.warn(`[Draft] Log ${eventType} failed:`, error.message);
   });
@@ -68,6 +82,22 @@ export function logSuggestionRejected(originalText: string, persona?: string): v
 
 export function logPersonaSelected(persona: string): void {
   logEvent('persona_selected', { persona });
+}
+
+export function logEditProposed(selectedText: string, instruction: string): void {
+  logEvent('edit_proposed', { selected_text: selectedText, metadata: { instruction } });
+}
+
+export function logEditRejected(selectedText: string): void {
+  logEvent('edit_rejected', { selected_text: selectedText });
+}
+
+export function logTranslateRequest(selectedText: string, targetLanguage: string): void {
+  logEvent('translate_request', { selected_text: selectedText, metadata: { target_language: targetLanguage } });
+}
+
+export function logCitationRequest(selectedText: string): void {
+  logEvent('citation_request', { selected_text: selectedText });
 }
 
 // ── Document snapshots ──
@@ -113,4 +143,56 @@ export async function submitDocument(
 
   if (error) return { success: false, error: error.message };
   return { success: true };
+}
+
+// ── API cost tracking ──
+
+/** Calculate cost in USD for Claude Sonnet 4 */
+function calculateCost(inputTokens: number, outputTokens: number): number {
+  // Claude Sonnet 4: $3/M input, $15/M output
+  return (inputTokens * 3 + outputTokens * 15) / 1_000_000;
+}
+
+export function logApiUsage(
+  documentId: string,
+  inputTokens: number,
+  outputTokens: number,
+  model: string,
+  requestType: string,
+): void {
+  if (!supabase) return;
+  const sessionId = getSessionId();
+  const cost = calculateCost(inputTokens, outputTokens);
+  supabase.from('api_usage').insert({
+    session_id: sessionId,
+    document_id: documentId,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    model,
+    cost_usd: cost,
+    request_type: requestType,
+  }).then(({ error }) => {
+    if (error) console.warn('[Draft] Usage log failed:', error.message);
+  });
+}
+
+/** Check total spend and per-document request count */
+export async function checkBudget(documentId: string): Promise<{
+  allowed: boolean;
+  totalCost: number;
+  docRequests: number;
+}> {
+  if (!supabase) return { allowed: true, totalCost: 0, docRequests: 0 };
+
+  const [costResult, countResult] = await Promise.all([
+    supabase.from('api_usage').select('cost_usd'),
+    supabase.from('api_usage').select('id', { count: 'exact', head: true }).eq('document_id', documentId),
+  ]);
+
+  const totalCost = (costResult.data ?? []).reduce((sum, r) => sum + Number(r.cost_usd), 0);
+  const docRequests = countResult.count ?? 0;
+
+  // Block if over $1000 total or 50 requests per document
+  const allowed = totalCost < 1000 && docRequests < 50;
+  return { allowed, totalCost, docRequests };
 }
