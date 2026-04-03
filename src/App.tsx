@@ -462,7 +462,7 @@ export default function App() {
     if (!result.success) {
       throw new Error(result.error || 'Submission failed');
     }
-    setSubmitDialogOpen(false);
+    // Dialog handles its own success state — keep it open to show the link
     setSubmitted(true);
   }, []);
 
