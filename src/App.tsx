@@ -18,6 +18,7 @@ import SubmitDialog from './components/SubmitDialog';
 import TemplatePage from './components/TemplatePage';
 import { submitDocument } from './lib/logger';
 import { saveTemplate, getTemplate } from './lib/templates';
+import { saveComments, loadComments, saveThread } from './lib/comments';
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
@@ -151,6 +152,16 @@ export default function App() {
     });
   }, []);
 
+  // Load persisted comments for this document
+  useEffect(() => {
+    loadComments(documentId).then((result) => {
+      if (result) {
+        setComments(result.comments);
+        setThreads(result.threads);
+      }
+    });
+  }, [documentId]);
+
   // Load the persisted Google Font on mount
   useEffect(() => {
     const font = getFontByName(fontName);
@@ -249,6 +260,7 @@ export default function App() {
 
       const feedbackComments = await requestFeedback(text, { rubric, context });
       setComments(feedbackComments);
+      saveComments(documentId, feedbackComments);
 
       for (const c of feedbackComments) {
         logFeedbackReceived(c.quote, c.comment);
@@ -261,7 +273,7 @@ export default function App() {
       setShimmerFading(true);
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
-  }, [rubric, context]);
+  }, [rubric, context, documentId]);
 
   const handleFeedbackSelection = useCallback(async (selectedText: string) => {
     if (!selectedText.trim()) return;
@@ -283,6 +295,7 @@ export default function App() {
 
       const feedbackComments = await requestFeedback(selectedText, { rubric, context });
       setComments(feedbackComments);
+      saveComments(documentId, feedbackComments);
 
       for (const c of feedbackComments) {
         logFeedbackReceived(c.quote, c.comment);
@@ -295,7 +308,7 @@ export default function App() {
       setShimmerFading(true);
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
-  }, [rubric, context]);
+  }, [rubric, context, documentId]);
 
   const handleSendMessage = useCallback(
     async (commentId: string, message: string) => {
@@ -315,20 +328,22 @@ export default function App() {
         const docText = extractText(editorValueRef.current);
         const reply = await chatWithClaude(docText, comment, updatedMessages);
         logThreadReplyReceived(commentId, reply);
+        const updatedThread = {
+          commentId,
+          messages: [...updatedMessages, { role: 'assistant' as const, content: reply }],
+        };
         setThreads((prev) => ({
           ...prev,
-          [commentId]: {
-            commentId,
-            messages: [...updatedMessages, { role: 'assistant', content: reply }],
-          },
+          [commentId]: updatedThread,
         }));
+        saveThread(documentId, commentId, updatedThread);
       } catch (e) {
         setError(String(e instanceof Error ? e.message : e));
       } finally {
         setIsChatLoading(false);
       }
     },
-    [comments, threads]
+    [comments, threads, documentId]
   );
 
   const [exportState, setExportState] = useState<'idle' | 'success'>('idle');
