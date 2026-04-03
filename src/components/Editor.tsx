@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useEffect, useLayoutEffect, useState } from 'react';
 import ScrollAssist from './ScrollAssist';
 
 // Error boundary that auto-recovers from Yjs/Slate rendering crashes
@@ -159,6 +159,69 @@ const PageBreakPlugin = createPlatePlugin({
     isVoid: true,
   },
 });
+
+/**
+ * Page break element that dynamically fills remaining space on the current
+ * visual page so that subsequent content starts at the top of the next page.
+ *
+ * The visual page simulation uses a repeating gradient every PAGE_CYCLE px
+ * (1056px visible + 40px gap). This component measures its position within
+ * the page-content container and sets its height to reach the next page start.
+ */
+const PAGE_VISIBLE = 1056;
+const PAGE_GAP = 40;
+const PAGE_CYCLE = PAGE_VISIBLE + PAGE_GAP; // 1096
+const PAGE_PADDING_TOP = 96;
+
+function PageBreakElement(props: any) {
+  const spacerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = spacerRef.current;
+    if (!el) return;
+
+    const recalc = () => {
+      // Walk up to find offsetTop relative to .page-content (position: relative)
+      let offsetTop = 0;
+      let current: HTMLElement | null = el;
+      const pageContent = el.closest('.page-content') as HTMLElement | null;
+      if (!pageContent) return;
+
+      while (current && current !== pageContent) {
+        offsetTop += current.offsetTop;
+        current = current.offsetParent as HTMLElement | null;
+      }
+
+      // Convert to page-container coordinates (add padding-top)
+      const posInContainer = offsetTop + PAGE_PADDING_TOP;
+      const cyclePos = posInContainer % PAGE_CYCLE;
+      // Fill remaining space in this cycle (visible area + gap)
+      const height = PAGE_CYCLE - cyclePos;
+      el.style.height = `${Math.max(0, height)}px`;
+    };
+
+    recalc();
+
+    // Recalculate when content above changes (text added/removed shifts our position)
+    const pageContent = el.closest('.page-content');
+    if (!pageContent) return;
+    const observer = new MutationObserver(() => requestAnimationFrame(recalc));
+    observer.observe(pageContent, { childList: true, subtree: true, characterData: true });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <PlateElement {...props}>
+      <div ref={spacerRef} className="page-break-spacer" contentEditable={false}>
+        <div className="page-break-line">
+          <span className="page-break-label">Page Break</span>
+        </div>
+      </div>
+      {props.children}
+    </PlateElement>
+  );
+}
 
 function TableToolbar({ editor }: { editor: AnyEditor }) {
   const [visible, setVisible] = useState(false);
@@ -859,14 +922,7 @@ export default function Editor({
               {props.children}
             </PlateElement>
           ),
-          [PageBreakPlugin.key]: (props: any) => (
-            <PlateElement {...props}>
-              <div className="page-break-line" contentEditable={false}>
-                <span className="page-break-label">Page Break</span>
-              </div>
-              {props.children}
-            </PlateElement>
-          ),
+          [PageBreakPlugin.key]: PageBreakElement,
         } as Record<string, any>,
       },
       value: (initialValue as never) || [

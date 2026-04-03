@@ -72,6 +72,7 @@
   padding: 96px;
   min-height: 1056px;
   position: relative;
+  z-index: 0;
 }
 
 /* ── Editor typography ── */
