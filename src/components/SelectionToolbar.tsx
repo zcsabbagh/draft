@@ -142,7 +142,7 @@ export default function SelectionToolbar({ containerRef, onEdit, onCite, onFeedb
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <path d="M8.5 1.5L10.5 3.5L4 10H2V8L8.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        Edit
+        AI Edit
       </button>
       {/* Citation button removed for study deployment */}
       {onFeedback && (
