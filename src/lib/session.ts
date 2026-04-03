@@ -2,10 +2,6 @@ import { supabase } from './supabase';
 
 const SESSION_KEY = 'draft_session_id';
 
-function generateUUID(): string {
-  return crypto.randomUUID();
-}
-
 let _sessionId: string | null = null;
 
 export function getSessionId(): string {
@@ -13,7 +9,7 @@ export function getSessionId(): string {
 
   let id = localStorage.getItem(SESSION_KEY);
   if (!id) {
-    id = generateUUID();
+    id = crypto.randomUUID();
     localStorage.setItem(SESSION_KEY, id);
     // Fire-and-forget: register session in Supabase
     supabase?.from('sessions').insert({ id }).then(({ error }) => {

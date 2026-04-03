@@ -7,7 +7,7 @@ import type { Citation, ReviewPersona } from './lib/api';
 import { getFontByName, loadGoogleFont } from './lib/fonts';
 import { useIsMobile } from './hooks/useIsMobile';
 import { getSessionId } from './lib/session';
-import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, logSuggestionRejected, saveSnapshot } from './lib/logger';
+import { logFeedbackRequest, logFeedbackReceived, logSuggestionAccepted, saveSnapshot } from './lib/logger';
 import type {
   FeedbackComment,
   CommentThread,
@@ -18,10 +18,12 @@ import SubmitDialog from './components/SubmitDialog';
 import { submitDocument } from './lib/logger';
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
-// const ImportDialog = lazy(() => import('./components/ImportDialog'));
-// const ImportNotionDialog = lazy(() => import('./components/ImportNotionDialog'));
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
 const Agentation = lazy(() => import('agentation').then(m => ({ default: m.Agentation })));
+
+function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
 
 function extractText(value: unknown[]): string {
   const texts: string[] = [];
@@ -170,7 +172,7 @@ export default function App() {
       const text = extractText(val);
       if (text !== lastSnapshotText && text.trim().length > 0) {
         lastSnapshotText = text;
-        saveSnapshot(val, text.split(/\s+/).length, 'auto');
+        saveSnapshot(val, countWords(text), 'auto');
       }
     }, 60000);
     return () => clearInterval(timer);
@@ -213,17 +215,17 @@ export default function App() {
 
     try {
       // Log pre-feedback snapshot + request
-      saveSnapshot(editorValueRef.current, text.split(/\s+/).length, 'pre_feedback');
+      const wc = countWords(text);
+      saveSnapshot(editorValueRef.current, wc, 'pre_feedback');
       logFeedbackRequest(text, selectedPersona);
 
       const feedbackComments = await requestFeedback(text, { rubric, context, persona: selectedPersona });
       setComments(feedbackComments);
 
-      // Log each feedback received
       for (const c of feedbackComments) {
         logFeedbackReceived(c.quote, c.comment, selectedPersona);
       }
-      saveSnapshot(editorValueRef.current, text.split(/\s+/).length, 'post_feedback');
+      saveSnapshot(editorValueRef.current, wc, 'post_feedback');
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -246,7 +248,9 @@ export default function App() {
     setSidebarOpen(true);
 
     try {
-      saveSnapshot(editorValueRef.current, extractText(editorValueRef.current).split(/\s+/).length, 'pre_feedback');
+      const docText = extractText(editorValueRef.current);
+      const wc = countWords(docText);
+      saveSnapshot(editorValueRef.current, wc, 'pre_feedback');
       logFeedbackRequest(selectedText, selectedPersona);
 
       const feedbackComments = await requestFeedback(selectedText, { rubric, context, persona: selectedPersona });
@@ -255,7 +259,7 @@ export default function App() {
       for (const c of feedbackComments) {
         logFeedbackReceived(c.quote, c.comment, selectedPersona);
       }
-      saveSnapshot(editorValueRef.current, extractText(editorValueRef.current).split(/\s+/).length, 'post_feedback');
+      saveSnapshot(editorValueRef.current, wc, 'post_feedback');
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
     } finally {
@@ -454,8 +458,7 @@ export default function App() {
   const handleSubmitEssay = useCallback(async (studentName: string, studentIdNumber: string) => {
     const content = editorValueRef.current;
     const text = extractText(content);
-    const wordCount = text.split(/\s+/).filter(Boolean).length;
-    const result = await submitDocument(studentName, studentIdNumber, content, wordCount);
+    const result = await submitDocument(studentName, studentIdNumber, content, countWords(text));
     if (!result.success) {
       throw new Error(result.error || 'Submission failed');
     }
@@ -937,27 +940,7 @@ export default function App() {
         onSubmit={handleSubmitEssay}
       />
 
-      {/* Lazy-loaded dialogs — only fetched when first opened (bundle-dynamic-imports) */}
-      {/* Import dialogs commented out for study deployment
-      {importDialogOpen && (
-        <Suspense fallback={null}>
-          <ImportDialog
-            open={importDialogOpen}
-            onClose={() => setImportDialogOpen(false)}
-            onImport={handleImport}
-          />
-        </Suspense>
-      )}
-      {importNotionDialogOpen && (
-        <Suspense fallback={null}>
-          <ImportNotionDialog
-            open={importNotionDialogOpen}
-            onClose={() => setImportNotionDialogOpen(false)}
-            onImport={handleImport}
-          />
-        </Suspense>
-      )}
-      */}
+      {/* Import dialogs disabled for study deployment */}
       {import.meta.env.DEV && (
         <Suspense fallback={null}>
           <Agentation />
