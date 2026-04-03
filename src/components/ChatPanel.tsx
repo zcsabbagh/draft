@@ -182,8 +182,10 @@ type Tab = 'feedback' | 'chat' | 'rubric' | 'context';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'feedback', label: 'Feedback' },
   { key: 'chat', label: 'Chat' },
-  { key: 'rubric', label: 'Rubric' },
-  { key: 'context', label: 'Context' },
+  // TODO: Rubric and Context tabs hidden for study deployment
+  // MAYBE REMOVE IN FUTURE
+  // { key: 'rubric', label: 'Rubric' },
+  // { key: 'context', label: 'Context' },
 ];
 
 function PillTabs({ tabs, activeTab, onTabSwitch }: {

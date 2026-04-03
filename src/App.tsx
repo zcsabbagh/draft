@@ -574,127 +574,18 @@ export default function App() {
             {error && (
               <span className="text-xs text-accent-unsupported">{error}</span>
             )}
-            <div
-              className="relative"
-              ref={importMenuRef}
-              onMouseEnter={() => setImportMenuOpen(true)}
-              onMouseLeave={() => setImportMenuOpen(false)}
-            >
-              <button
-                className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5 relative overflow-hidden min-w-[90px]"
-              >
-                <span className={`inline-flex items-center gap-1.5 transition-[opacity,transform] duration-300 ${importState === 'success' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M7 1v8M3.5 5.5L7 9l3.5-3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M2 12h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                  </svg>
-                  Import
-                </span>
-                {importState === 'success' && (
-                  <span className="absolute inset-0 flex items-center justify-center">
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="export-checkmark">
-                      <path d="M4 9.5L7.5 13L14 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="export-checkmark-path" />
-                    </svg>
-                  </span>
-                )}
-              </button>
-              {importMenuOpen && (
-                <div className="absolute right-0 top-full pt-1 z-50">
-                  <div className="w-56 bg-cream rounded-lg border border-border shadow-lg py-1 px-1">
-                  <button
-                    onClick={() => { setImportMenuOpen(false); setImportDialogOpen(true); }}
-                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
-                      <path d="M3.5 1.5h7.086a1 1 0 0 1 .707.293l3.414 3.414a1 1 0 0 1 .293.707V15a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 15V3a1.5 1.5 0 0 1 1.5-1.5z" fill="#4285F4" />
-                      <path d="M10 1.5v3.5a1 1 0 0 0 1 1h3.5" fill="#A1C4FD" />
-                      <rect x="5" y="8" width="8" height="1" rx="0.5" fill="white" />
-                      <rect x="5" y="10.5" width="6" height="1" rx="0.5" fill="white" />
-                      <rect x="5" y="13" width="4" height="1" rx="0.5" fill="white" />
-                    </svg>
-                    Google Docs
-                  </button>
-                  <button
-                    onClick={() => { setImportMenuOpen(false); setImportNotionDialogOpen(true); }}
-                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="shrink-0">
-                      <rect x="2" y="2" width="14" height="14" rx="2" fill="#000" />
-                      <path d="M5.5 5h2.3c1.2 0 2 .7 2 1.8v4.7c0 .3-.2.5-.5.5H6c-.3 0-.5-.2-.5-.5V5z" fill="white" />
-                      <path d="M6.2 5v.8h1.3c.6 0 1 .3 1 .9v3.8H6.2" stroke="#000" strokeWidth="0.6" fill="none" />
-                      <rect x="10.5" y="5" width="2.5" height="2.5" rx="0.3" fill="white" />
-                    </svg>
-                    Notion
-                  </button>
-                </div>
-                </div>
-              )}
-            </div>
-            <div
-              className="relative"
-              ref={exportMenuRef}
-              onMouseEnter={() => setExportMenuOpen(true)}
-              onMouseLeave={() => setExportMenuOpen(false)}
-            >
-              <button
-                className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M7 9V1M3.5 4.5L7 1l3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M2 12h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-                </svg>
-                Export
-              </button>
-              {exportMenuOpen && (
-                <div className="absolute right-0 top-full pt-1 z-50">
-                  <div className="w-44 bg-cream rounded-lg border border-border shadow-lg py-1 px-1">
-                  <button
-                    onClick={() => { setExportMenuOpen(false); handleExportPDF(); }}
-                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                      <rect x="2" y="1" width="12" height="14" rx="1.5" fill="#E53E3E" />
-                      <text x="8" y="10.5" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold" fontFamily="system-ui">PDF</text>
-                    </svg>
-                    PDF
-                  </button>
-                  <button
-                    onClick={() => {
-                      setExportMenuOpen(false);
-                      // Placeholder — .docx export not yet implemented
-                      alert('DOCX export coming soon');
-                    }}
-                    className="w-full text-left px-3 py-2.5 text-sm text-ink hover:bg-cream-dark transition-colors flex items-center gap-3 rounded-md"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0">
-                      <rect x="2" y="1" width="12" height="14" rx="1.5" fill="#2B579A" />
-                      <text x="8" y="10.5" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold" fontFamily="system-ui">DOC</text>
-                    </svg>
-                    Word (.docx)
-                  </button>
-                </div>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleNewDocument}
-              className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-              New
-            </button>
+            {/* Import/Export/New buttons hidden for study deployment */}
             <button
               onClick={handleShare}
               className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale flex items-center gap-1.5 relative overflow-hidden min-w-[85px]"
             >
               <span className={`inline-flex items-center gap-1.5 transition-[opacity,transform] duration-300 ${shareState === 'copied' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M4.5 8.5a2 2 0 1 1 0-3l5 2.5a2 2 0 1 1 0 1l-5-2.5Z" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M4.5 5.5a2 2 0 1 1 0 3l5-2.5a2 2 0 1 1 0-1l-5 2.5Z" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M5.5 2H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  <path d="M8 1.5h4.5V6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M12.5 1.5L7 7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
                 </svg>
-                Share
+                Copy Link
               </span>
               {shareState === 'copied' && (
                 <span className="absolute inset-0 flex items-center justify-center text-sm font-medium">
