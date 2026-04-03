@@ -4,7 +4,8 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/claude", "destination": "/api/claude" },
-    { "source": "/d/(.*)", "destination": "/index.html" }
+    { "source": "/d/(.*)", "destination": "/index.html" },
+    { "source": "/t/(.*)", "destination": "/index.html" }
   ],
   "headers": [
     {

@@ -15,7 +15,9 @@ import type {
 } from './lib/types';
 
 import SubmitDialog from './components/SubmitDialog';
+import TemplatePage from './components/TemplatePage';
 import { submitDocument } from './lib/logger';
+import { saveTemplate } from './lib/templates';
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
@@ -55,9 +57,15 @@ const INITIAL_VALUE = [
 
 // Hoisted regex — avoids re-creation per call (js-hoist-regexp)
 const DOC_ID_REGEX = /^\/d\/(.+)$/;
+const TEMPLATE_ID_REGEX = /^\/t\/(.+)$/;
 
 /** Embed mode hides header, sidebar, and timeline — used by MCP App iframe */
 const IS_EMBED = new URLSearchParams(window.location.search).has('embed');
+
+function getTemplateIdFromUrl(): string | null {
+  const match = window.location.pathname.match(TEMPLATE_ID_REGEX);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 function getDocumentIdFromUrl(): string {
   const path = window.location.pathname;
@@ -108,6 +116,9 @@ export default function App() {
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [templateMode, setTemplateMode] = useState<string | null>(() => getTemplateIdFromUrl());
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateUrl, setTemplateUrl] = useState<string | null>(null);
 
   const [shimmerFading, setShimmerFading] = useState(false);
   const shimmerTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -471,6 +482,39 @@ export default function App() {
     setSubmitted(true);
   }, []);
 
+  const handleSaveAsTemplate = useCallback(async () => {
+    setSavingTemplate(true);
+    try {
+      const content = editorValueRef.current;
+      const result = await saveTemplate(title, content);
+      if (result.error) {
+        setError(result.error);
+        setTimeout(() => setError(null), 3000);
+      } else {
+        const url = `${window.location.origin}/t/${result.id}`;
+        setTemplateUrl(url);
+      }
+    } finally {
+      setSavingTemplate(false);
+    }
+  }, [title]);
+
+  const handleTemplateCopy = useCallback((templateTitle: string, content: unknown[]) => {
+    const newId = generateDocumentId();
+    const copyTitle = `Copy of ${templateTitle}`;
+    window.history.pushState({}, '', `/d/${newId}`);
+    setTemplateMode(null);
+    setDocumentId(newId);
+    setEditorInitialValue(content);
+    editorValueRef.current = content;
+    setEditorKey((k) => k + 1);
+    setComments([]);
+    setActiveCommentId(null);
+    setThreads({});
+    setTitle(copyTitle);
+    localStorage.setItem('draft-title', copyTitle);
+  }, []);
+
   const handleNewDocument = useCallback(() => {
     const newId = generateDocumentId();
     window.history.pushState({}, '', `/d/${newId}`);
@@ -492,12 +536,18 @@ export default function App() {
       : 'Draft';
   }, [title]);
 
-  // Listen for popstate (browser back/forward) to update documentId
+  // Listen for popstate (browser back/forward) to update documentId or template
   useEffect(() => {
     const handler = () => {
-      const newId = getDocumentIdFromUrl();
-      setDocumentId(newId);
-      setEditorKey((k) => k + 1);
+      const tId = getTemplateIdFromUrl();
+      if (tId) {
+        setTemplateMode(tId);
+      } else {
+        setTemplateMode(null);
+        const newId = getDocumentIdFromUrl();
+        setDocumentId(newId);
+        setEditorKey((k) => k + 1);
+      }
     };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
@@ -553,6 +603,11 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [mobileMenuOpen]);
 
+  // Template view — entirely different page
+  if (templateMode) {
+    return <TemplatePage templateId={templateMode} onCopy={handleTemplateCopy} />;
+  }
+
   return (
     <div className="flex flex-col h-screen bg-cream">
       {/* Header — hidden in embed mode */}
@@ -596,6 +651,18 @@ export default function App() {
                   Copied!
                 </span>
               )}
+            </button>
+            <button
+              onClick={handleSaveAsTemplate}
+              disabled={savingTemplate}
+              className="text-sm px-4 py-1.5 rounded-lg border border-border text-ink font-medium hover:bg-cream-dark transition-colors press-scale disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M3 2.5A1.5 1.5 0 0 1 4.5 1h5.086a1.5 1.5 0 0 1 1.06.44l1.915 1.914A1.5 1.5 0 0 1 13 4.414V10.5A1.5 1.5 0 0 1 11.5 12h-7A1.5 1.5 0 0 1 3 10.5v-8Z" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M5 1v3h4V1" stroke="currentColor" strokeWidth="1.1" />
+                <rect x="5" y="7.5" width="4" height="2.5" rx="0.5" stroke="currentColor" strokeWidth="1.1" />
+              </svg>
+              {savingTemplate ? 'Saving...' : 'Save as Template'}
             </button>
             {submitted ? (
               <span className="text-sm px-4 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 font-medium flex items-center gap-1.5">
@@ -824,6 +891,49 @@ export default function App() {
         onClose={() => setSubmitDialogOpen(false)}
         onSubmit={handleSubmitEssay}
       />
+
+      {/* Template URL dialog */}
+      {templateUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 animate-fade-in">
+          <div
+            className="bg-cream rounded-2xl shadow-xl border border-border w-full max-w-md mx-4 p-6 animate-dropdown-open"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-ink mb-1">Template Saved</h2>
+            <p className="text-sm text-ink-lighter mb-4">
+              Share this link — anyone with it can make their own copy.
+            </p>
+            <div className="flex items-center gap-2 mb-5">
+              <input
+                type="text"
+                value={templateUrl}
+                readOnly
+                className="flex-1 text-sm px-3 py-2.5 rounded-lg bg-white border border-border text-ink font-mono select-all focus:outline-none focus:border-ink-lighter"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+                autoFocus
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(templateUrl);
+                }}
+                className="shrink-0 p-2.5 rounded-lg border border-border hover:bg-cream-dark transition-colors press-scale"
+                title="Copy link"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <rect x="6" y="6" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+                  <path d="M12 6V4.5A1.5 1.5 0 0 0 10.5 3H4.5A1.5 1.5 0 0 0 3 4.5v6A1.5 1.5 0 0 0 4.5 12H6" stroke="currentColor" strokeWidth="1.4" />
+                </svg>
+              </button>
+            </div>
+            <button
+              onClick={() => setTemplateUrl(null)}
+              className="w-full text-sm px-4 py-2.5 rounded-lg bg-ink text-cream font-medium hover:bg-ink-light transition-colors press-scale"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Import dialogs disabled for study deployment */}
       {import.meta.env.DEV && (

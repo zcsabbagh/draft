@@ -44,11 +44,11 @@
     to bottom,
     transparent 0px, transparent 1055px,
     white 1055px, white 1056px,
-    #FAF9F5 1056px, #FAF9F5 1076px,
-    white 1076px, white 1077px,
-    transparent 1077px
+    #FAF9F5 1056px, #FAF9F5 1095px,
+    white 1095px, white 1096px,
+    transparent 1096px
   );
-  background-size: 100% 1077px;
+  background-size: 100% 1096px;
 }
 
 .page-container::after {
@@ -61,11 +61,11 @@
     to bottom,
     transparent 0px, transparent 1055px,
     #E5E5E0 1055px, #E5E5E0 1056px,
-    transparent 1056px, transparent 1076px,
-    #E5E5E0 1076px, #E5E5E0 1077px,
-    transparent 1077px
+    transparent 1056px, transparent 1095px,
+    #E5E5E0 1095px, #E5E5E0 1096px,
+    transparent 1096px
   );
-  background-size: 100% 1077px;
+  background-size: 100% 1096px;
 }
 
 .page-content {
@@ -152,9 +152,9 @@
       to bottom,
       transparent 0px, transparent 1055px,
       var(--color-border) 1055.5px, transparent 1056px,
-      transparent 1077px
+      transparent 1096px
     );
-    background-size: 100% 1077px;
+    background-size: 100% 1096px;
   }
   .page-container::after { display: none; }
   [data-slate-editor] { font-size: 16px; line-height: 1.6; }
