@@ -38,7 +38,8 @@ import {
   useEditorRef,
   createPlatePlugin,
 } from 'platejs/react';
-import { YjsPlugin } from '@platejs/yjs/react';
+import { withYjs, YjsEditor, slateNodesToInsertDelta } from '@slate-yjs/core';
+import * as Y from 'yjs';
 import {
   BasicBlocksPlugin,
   BasicMarksPlugin,
@@ -102,7 +103,7 @@ interface EditorProps {
   onCite?: (selectedText: string) => Promise<number>;
   onFeedbackSelection?: (selectedText: string) => void;
   editorRef?: React.RefObject<unknown | null>;
-  collabUrl?: string;       // Hocuspocus WebSocket URL, e.g. ws://localhost:8888
+  sharedType?: Y.XmlText;   // Yjs shared type for collaborative editing
   documentId?: string;      // Document name for collab
   isMobile?: boolean;       // Mobile layout mode
   isLoading?: boolean;      // Show reading shimmer animation
@@ -781,14 +782,14 @@ export default function Editor({
   onCite,
   onFeedbackSelection,
   editorRef: externalEditorRef,
-  collabUrl,
+  sharedType,
   documentId = 'draft-default',
   isMobile = false,
   isLoading = false,
   isShimmerFading = false,
 }: EditorProps) {
   const fontFamily = getFontByName(fontName).family;
-  const useCollab = !!collabUrl;
+  const useCollab = !!sharedType;
   const commentsRef = useRef(comments);
   const activeIdRef = useRef(activeCommentId);
   const clickRef = useRef(onCommentClick);
@@ -824,19 +825,7 @@ export default function Editor({
         TablePlugin,
         CitationLinkPlugin,
         PageBreakPlugin,
-        ...(useCollab ? [YjsPlugin.configure({
-          options: {
-            cursors: {
-              data: { name: 'You', color: '#C66140' },
-            },
-            providers: [{
-              type: 'hocuspocus' as const,
-              options: { name: documentId, url: collabUrl! },
-            }],
-          },
-        })] : []),
       ],
-      skipInitialization: useCollab,
       override: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         components: {
@@ -946,31 +935,26 @@ export default function Editor({
     };
   }, [editor, externalEditorRef]);
 
-  // Initialize Yjs: connect to Hocuspocus and set initial value if doc is empty
+  // Bind Slate editor to Yjs shared type (if collaborative)
   const [yjsReady, setYjsReady] = useState(!useCollab);
   useEffect(() => {
-    if (!useCollab) return;
-    let destroyed = false;
+    if (!useCollab || !sharedType) return;
 
-    (async () => {
-      try {
-        await editor.getApi(YjsPlugin).yjs.init({
-          id: documentId,
-          autoConnect: true,
-          value: (initialValue as never) || [{ type: 'p', children: [{ text: '' }] }],
-        });
-      } catch (err) {
-        console.warn('[Yjs] init:', (err as Error).message);
-      }
-      if (!destroyed) setYjsReady(true);
-    })();
+    try {
+      // withYjs binds the editor to the Y.XmlText shared type
+      withYjs(editor as any, sharedType);
+      YjsEditor.connect(editor as any);
+      setYjsReady(true);
+    } catch (err) {
+      console.warn('[Yjs] Failed to bind:', (err as Error).message);
+      setYjsReady(true); // still allow editing
+    }
 
     return () => {
-      destroyed = true;
-      try { editor.getApi(YjsPlugin).yjs.destroy(); } catch { /* ignore */ }
+      try { YjsEditor.disconnect(editor as any); } catch { /* ignore */ }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useCollab, documentId]);
+  }, [useCollab, sharedType]);
 
   // Connect to the WebSocket bridge for MCP server communication
   useEditorBridge(editor);

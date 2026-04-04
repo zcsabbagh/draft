@@ -19,7 +19,9 @@ import TemplatePage from './components/TemplatePage';
 import { submitDocument } from './lib/logger';
 import { saveTemplate, getTemplate } from './lib/templates';
 import { saveComments, loadComments, saveThread } from './lib/comments';
-import { loadDocument, saveDocument } from './lib/documents';
+import { loadDocument } from './lib/documents';
+import { SupabaseSyncProvider } from './lib/sync';
+import * as Y from 'yjs';
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
@@ -138,25 +140,48 @@ export default function App() {
   const plateEditorRef = useRef<any>(null);
   const snapshotTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
+  // Supabase Yjs sync provider — manages Y.Doc, broadcast, and persistence
+  const [syncProvider, setSyncProvider] = useState<SupabaseSyncProvider | null>(null);
+  const [sharedType, setSharedType] = useState<Y.XmlText | null>(null);
+
   // Initialize anonymous session on first load
   useEffect(() => {
     getSessionId();
   }, []);
 
-  // Load document title from Supabase.
-  // Content sync is handled by Yjs/Hocuspocus — don't remount the editor.
+  // Initialize sync provider for the current document
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('from_template')) return;
+
+    const provider = new SupabaseSyncProvider({
+      documentId,
+      onSynced: () => {
+        setDocumentLoaded(true);
+      },
+    });
+
+    // Get the shared Y.XmlText root that Slate will bind to
+    const st = provider.doc.get('content', Y.XmlText);
+    setSharedType(st);
+    setSyncProvider(provider);
+
+    // Load title from Supabase
     loadDocument(documentId).then((doc) => {
       if (doc) {
         setTitle(doc.title);
-        try {
-          localStorage.setItem(`draft-title-${documentId}`, doc.title);
-        } catch { /* ignore */ }
+        try { localStorage.setItem(`draft-title-${documentId}`, doc.title); } catch { /* ignore */ }
       }
-      setDocumentLoaded(true);
     });
+
+    // Connect (loads state + joins broadcast channel)
+    provider.connect();
+
+    return () => {
+      provider.destroy();
+      setSyncProvider(null);
+      setSharedType(null);
+    };
   }, [documentId]);
 
   // Load template content if opened via "Make a Copy" (?from_template=...)
@@ -242,29 +267,21 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Debounced save to Supabase
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   const handleEditorChange = useCallback((value: unknown[]) => {
     editorValueRef.current = value;
-    // Persist content to localStorage for this document (immediate)
+    // Persist content to localStorage for this document (immediate fallback)
     try {
       localStorage.setItem(`draft-content-${documentId}`, JSON.stringify(value));
     } catch { /* quota exceeded — ignore */ }
-    // Debounced save to Supabase (2s after last change)
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveDocument(documentId, title, value);
-    }, 2000);
-  }, [documentId, title]);
+    // Yjs state persistence is handled by the sync provider (debounced)
+  }, [documentId]);
 
   const handleTitleChange = useCallback((value: string) => {
     setTitle(value);
     localStorage.setItem(`draft-title-${documentId}`, value);
     localStorage.setItem('draft-title', value); // backward compat
-    // Save title to Supabase
-    saveDocument(documentId, value, editorValueRef.current);
-  }, [documentId]);
+    syncProvider?.saveTitle(value);
+  }, [documentId, syncProvider]);
 
   const handleRubricChange = useCallback((value: string) => {
     setRubric(value);
@@ -877,7 +894,7 @@ export default function App() {
               onCite={handleCite}
               onFeedbackSelection={handleFeedbackSelection}
               editorRef={plateEditorRef}
-              collabUrl="wss://draft-collab-production.up.railway.app"
+              sharedType={sharedType ?? undefined}
               documentId={documentId}
               isMobile={isMobile}
               isLoading={isLoading}
