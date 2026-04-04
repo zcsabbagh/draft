@@ -38,8 +38,7 @@ import {
   useEditorRef,
   createPlatePlugin,
 } from 'platejs/react';
-import { withYjs, YjsEditor, slateNodesToInsertDelta } from '@slate-yjs/core';
-import * as Y from 'yjs';
+import { YjsPlugin } from '@platejs/yjs/react';
 import {
   BasicBlocksPlugin,
   BasicMarksPlugin,
@@ -103,7 +102,7 @@ interface EditorProps {
   onCite?: (selectedText: string) => Promise<number>;
   onFeedbackSelection?: (selectedText: string) => void;
   editorRef?: React.RefObject<unknown | null>;
-  sharedType?: Y.XmlText;   // Yjs shared type for collaborative editing
+  collab?: boolean;         // Enable Supabase Realtime collaborative editing
   documentId?: string;      // Document name for collab
   isMobile?: boolean;       // Mobile layout mode
   isLoading?: boolean;      // Show reading shimmer animation
@@ -782,14 +781,14 @@ export default function Editor({
   onCite,
   onFeedbackSelection,
   editorRef: externalEditorRef,
-  sharedType,
+  collab = false,
   documentId = 'draft-default',
   isMobile = false,
   isLoading = false,
   isShimmerFading = false,
 }: EditorProps) {
   const fontFamily = getFontByName(fontName).family;
-  const useCollab = !!sharedType;
+  const useCollab = collab;
   const commentsRef = useRef(comments);
   const activeIdRef = useRef(activeCommentId);
   const clickRef = useRef(onCommentClick);
@@ -825,7 +824,19 @@ export default function Editor({
         TablePlugin,
         CitationLinkPlugin,
         PageBreakPlugin,
+        ...(useCollab ? [YjsPlugin.configure({
+          options: {
+            cursors: {
+              data: { name: 'You', color: '#C66140' },
+            },
+            providers: [{
+              type: 'supabase',
+              options: { documentId },
+            } as any],
+          },
+        })] : []),
       ],
+      skipInitialization: useCollab,
       override: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         components: {
@@ -935,26 +946,31 @@ export default function Editor({
     };
   }, [editor, externalEditorRef]);
 
-  // Bind Slate editor to Yjs shared type (if collaborative)
+  // Initialize Yjs: connect via Supabase provider
   const [yjsReady, setYjsReady] = useState(!useCollab);
   useEffect(() => {
-    if (!useCollab || !sharedType) return;
+    if (!useCollab) return;
+    let destroyed = false;
 
-    try {
-      // withYjs binds the editor to the Y.XmlText shared type
-      withYjs(editor as any, sharedType);
-      YjsEditor.connect(editor as any);
-      setYjsReady(true);
-    } catch (err) {
-      console.warn('[Yjs] Failed to bind:', (err as Error).message);
-      setYjsReady(true); // still allow editing
-    }
+    (async () => {
+      try {
+        await editor.getApi(YjsPlugin).yjs.init({
+          id: documentId,
+          autoConnect: true,
+          value: (initialValue as never) || [{ type: 'p', children: [{ text: '' }] }],
+        });
+      } catch (err) {
+        console.warn('[Yjs] init:', (err as Error).message);
+      }
+      if (!destroyed) setYjsReady(true);
+    })();
 
     return () => {
-      try { YjsEditor.disconnect(editor as any); } catch { /* ignore */ }
+      destroyed = true;
+      try { editor.getApi(YjsPlugin).yjs.destroy(); } catch { /* ignore */ }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useCollab, sharedType]);
+  }, [useCollab, documentId]);
 
   // Connect to the WebSocket bridge for MCP server communication
   useEditorBridge(editor);

@@ -20,8 +20,10 @@ import { submitDocument } from './lib/logger';
 import { saveTemplate, getTemplate } from './lib/templates';
 import { saveComments, loadComments, saveThread } from './lib/comments';
 import { loadDocument } from './lib/documents';
-import { SupabaseSyncProvider } from './lib/sync';
-import * as Y from 'yjs';
+import { registerSupabaseProvider, saveTitle as saveDocTitle } from './lib/sync';
+
+// Register the Supabase provider with @platejs/yjs (once at module load)
+registerSupabaseProvider();
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
@@ -140,48 +142,22 @@ export default function App() {
   const plateEditorRef = useRef<any>(null);
   const snapshotTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
-  // Supabase Yjs sync provider — manages Y.Doc, broadcast, and persistence
-  const [syncProvider, setSyncProvider] = useState<SupabaseSyncProvider | null>(null);
-  const [sharedType, setSharedType] = useState<Y.XmlText | null>(null);
-
   // Initialize anonymous session on first load
   useEffect(() => {
     getSessionId();
   }, []);
 
-  // Initialize sync provider for the current document
+  // Load document title from Supabase
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('from_template')) return;
-
-    const provider = new SupabaseSyncProvider({
-      documentId,
-      onSynced: () => {
-        setDocumentLoaded(true);
-      },
-    });
-
-    // Get the shared Y.XmlText root that Slate will bind to
-    const st = provider.doc.get('content', Y.XmlText);
-    setSharedType(st);
-    setSyncProvider(provider);
-
-    // Load title from Supabase
     loadDocument(documentId).then((doc) => {
       if (doc) {
         setTitle(doc.title);
         try { localStorage.setItem(`draft-title-${documentId}`, doc.title); } catch { /* ignore */ }
       }
+      setDocumentLoaded(true);
     });
-
-    // Connect (loads state + joins broadcast channel)
-    provider.connect();
-
-    return () => {
-      provider.destroy();
-      setSyncProvider(null);
-      setSharedType(null);
-    };
   }, [documentId]);
 
   // Load template content if opened via "Make a Copy" (?from_template=...)
@@ -280,8 +256,8 @@ export default function App() {
     setTitle(value);
     localStorage.setItem(`draft-title-${documentId}`, value);
     localStorage.setItem('draft-title', value); // backward compat
-    syncProvider?.saveTitle(value);
-  }, [documentId, syncProvider]);
+    saveDocTitle(documentId, value);
+  }, [documentId]);
 
   const handleRubricChange = useCallback((value: string) => {
     setRubric(value);
@@ -894,7 +870,7 @@ export default function App() {
               onCite={handleCite}
               onFeedbackSelection={handleFeedbackSelection}
               editorRef={plateEditorRef}
-              sharedType={sharedType ?? undefined}
+              collab
               documentId={documentId}
               isMobile={isMobile}
               isLoading={isLoading}

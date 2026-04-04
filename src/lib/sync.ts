@@ -1,22 +1,18 @@
 /**
- * Supabase Yjs Sync Provider
+ * Supabase Yjs Provider for @platejs/yjs
  *
- * Replaces Hocuspocus/Railway with Supabase Realtime broadcast channels
- * for real-time document sync, and Supabase Postgres for persistence.
+ * A custom provider that replaces Hocuspocus/Railway with Supabase Realtime
+ * broadcast channels for real-time sync, and Supabase Postgres for persistence.
  *
- * Each client (browser or MCP server):
- * 1. Creates a local Y.Doc
- * 2. Loads persisted Yjs binary state from documents.yjs_state
- * 3. Joins a Supabase Realtime broadcast channel "doc:{documentId}"
- * 4. On local change → broadcast the incremental update
- * 5. On broadcast received → apply the update to local Y.Doc
- * 6. Periodically and on disconnect → persist state to Postgres
+ * Register with: registerSupabaseProvider() — call once before editor creation.
+ * Then use type: 'supabase' in YjsPlugin.configure({ providers: [...] })
  */
 import * as Y from 'yjs';
+import { registerProviderType } from '@platejs/yjs';
 import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-/** Encode a Uint8Array as base64 string for JSON-safe broadcast */
+/** Encode Uint8Array as base64 */
 function toBase64(data: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < data.length; i++) {
@@ -25,7 +21,7 @@ function toBase64(data: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Decode a base64 string back to Uint8Array */
+/** Decode base64 to Uint8Array */
 function fromBase64(base64: string): Uint8Array {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -35,78 +31,114 @@ function fromBase64(base64: string): Uint8Array {
   return bytes;
 }
 
-export interface SyncProviderOptions {
-  documentId: string;
-  /** Called once the Y.Doc is loaded and ready */
-  onSynced?: () => void;
-  /** Called on every remote update (for editor re-render) */
-  onUpdate?: () => void;
-}
+/**
+ * Provider wrapper matching @platejs/yjs provider interface.
+ * Implements the same contract as HocuspocusProviderWrapper.
+ */
+class SupabaseProviderWrapper {
+  _isConnected = false;
+  _isSynced = false;
+  type = 'supabase';
 
-export class SupabaseSyncProvider {
-  readonly doc: Y.Doc;
-  readonly documentId: string;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  onError?: (error: Error) => void;
+  onSyncChange?: (isSynced: boolean) => void;
 
+  private doc: Y.Doc;
+  private documentId: string;
   private channel: RealtimeChannel | null = null;
+  private clientId: string;
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
   private isSaving = false;
   private destroyed = false;
-  private onSynced?: () => void;
-  private onUpdate?: () => void;
 
-  /** Unique client ID to avoid applying own broadcasts */
-  private clientId: string;
-
-  constructor(options: SyncProviderOptions) {
+  constructor({
+    doc,
+    options,
+    onConnect,
+    onDisconnect,
+    onError,
+    onSyncChange,
+  }: {
+    awareness?: unknown;
+    doc?: Y.Doc;
+    options: { documentId: string };
+    onConnect?: () => void;
+    onDisconnect?: () => void;
+    onError?: (error: Error) => void;
+    onSyncChange?: (isSynced: boolean) => void;
+  }) {
+    this.doc = doc || new Y.Doc();
     this.documentId = options.documentId;
-    this.onSynced = options.onSynced;
-    this.onUpdate = options.onUpdate;
-    this.doc = new Y.Doc();
+    this.onConnect = onConnect;
+    this.onDisconnect = onDisconnect;
+    this.onError = onError;
+    this.onSyncChange = onSyncChange;
     this.clientId = Math.random().toString(36).slice(2, 10);
 
-    // Listen for local Y.Doc changes and broadcast them
+    // Listen for local Y.Doc changes → broadcast + persist
     this.doc.on('update', this.handleDocUpdate);
+
+    // Auto-connect
+    this.connect();
   }
 
-  /** Connect: load from Postgres, then join broadcast channel */
-  async connect(): Promise<void> {
+  private async connect(): Promise<void> {
     if (!supabase) {
       console.warn('[Sync] Supabase not configured — running offline');
-      this.onSynced?.();
+      this.markConnected();
+      this.markSynced();
       return;
     }
 
-    // 1. Load persisted state from Postgres
-    await this.loadState();
+    try {
+      // 1. Load persisted state from Postgres
+      await this.loadState();
 
-    // 2. Join Supabase Realtime broadcast channel
-    this.channel = supabase.channel(`doc:${this.documentId}`, {
-      config: { broadcast: { self: false } },
-    });
+      // 2. Join Supabase Realtime broadcast channel
+      this.channel = supabase.channel(`doc:${this.documentId}`, {
+        config: { broadcast: { self: false } },
+      });
 
-    this.channel.on('broadcast', { event: 'yjs-update' }, (payload) => {
-      if (this.destroyed) return;
-      if (payload.payload?.clientId === this.clientId) return;
+      this.channel.on('broadcast', { event: 'yjs-update' }, (payload) => {
+        if (this.destroyed) return;
+        if (payload.payload?.clientId === this.clientId) return;
 
-      try {
-        const update = fromBase64(payload.payload.update);
-        Y.applyUpdate(this.doc, update, 'remote');
-        this.onUpdate?.();
-      } catch (err) {
-        console.warn('[Sync] Failed to apply remote update:', err);
+        try {
+          const update = fromBase64(payload.payload.update);
+          Y.applyUpdate(this.doc, update, 'remote');
+        } catch (err) {
+          console.warn('[Sync] Failed to apply remote update:', err);
+        }
+      });
+
+      this.channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[Sync] Connected to doc:${this.documentId}`);
+          this.markConnected();
+          this.markSynced();
+        }
+      });
+
+      // 3. Persist on page unload
+      if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', this.handleBeforeUnload);
       }
-    });
+    } catch (err) {
+      this.onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
 
-    this.channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log(`[Sync] Joined channel doc:${this.documentId}`);
-        this.onSynced?.();
-      }
-    });
+  private markConnected(): void {
+    this._isConnected = true;
+    this.onConnect?.();
+  }
 
-    // 3. Persist on page unload
-    if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', this.handleBeforeUnload);
+  private markSynced(): void {
+    if (!this._isSynced) {
+      this._isSynced = true;
+      this.onSyncChange?.(true);
     }
   }
 
@@ -114,43 +146,26 @@ export class SupabaseSyncProvider {
   private async loadState(): Promise<void> {
     if (!supabase) return;
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('documents')
-      .select('yjs_state, content, title')
+      .select('yjs_state')
       .eq('id', this.documentId)
       .single();
 
-    if (error || !data) return;
-
-    if (data.yjs_state) {
-      // Binary Yjs state exists — apply it
+    if (data?.yjs_state) {
       try {
         const bytes = fromBase64(data.yjs_state as string);
         Y.applyUpdate(this.doc, bytes, 'load');
       } catch (err) {
         console.warn('[Sync] Failed to load Yjs state:', err);
       }
-    } else if (data.content && Array.isArray(data.content)) {
-      // Legacy: Slate JSON content exists but no Yjs state.
-      // Seed the Y.Doc from Slate JSON (migration path).
-      this.seedFromSlateJson(data.content);
     }
   }
 
-  /** Seed Y.Doc from legacy Slate JSON content (migration) */
-  private seedFromSlateJson(slateNodes: unknown[]): void {
-    const sharedRoot = this.doc.get('content', Y.XmlText);
-    const delta = slateNodesToDelta(slateNodes);
-    if (delta.length > 0) {
-      sharedRoot.applyDelta(delta);
-    }
-  }
-
-  /** Handle local Y.Doc updates — broadcast to other clients */
+  /** Handle local Y.Doc updates — broadcast + schedule persist */
   private handleDocUpdate = (update: Uint8Array, origin: unknown): void => {
     if (this.destroyed || origin === 'remote' || origin === 'load') return;
 
-    // Broadcast the incremental update
     if (this.channel) {
       this.channel.send({
         type: 'broadcast',
@@ -162,18 +177,13 @@ export class SupabaseSyncProvider {
       });
     }
 
-    // Schedule debounced persist to Postgres (5s after last change)
-    this.scheduleSave();
-  };
-
-  /** Debounced save to Supabase Postgres */
-  private scheduleSave(): void {
+    // Debounced persist (5s after last change)
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.saveState(), 5000);
-  }
+  };
 
-  /** Persist current Y.Doc state to Supabase */
-  async saveState(): Promise<void> {
+  /** Persist Y.Doc state to Supabase */
+  private async saveState(): Promise<void> {
     if (!supabase || this.isSaving || this.destroyed) return;
     this.isSaving = true;
 
@@ -201,37 +211,24 @@ export class SupabaseSyncProvider {
     }
   }
 
-  /** Save title to Supabase */
-  async saveTitle(title: string): Promise<void> {
-    if (!supabase) return;
-
-    await supabase
-      .from('documents')
-      .upsert(
-        { id: this.documentId, title, updated_at: new Date().toISOString() },
-        { onConflict: 'id' },
-      );
-  }
-
-  /** Save on page unload */
   private handleBeforeUnload = (): void => {
-    if (!supabase || this.destroyed) return;
-
-    const state = Y.encodeStateAsUpdate(this.doc);
-    const b64 = toBase64(state);
-
-    // Fire-and-forget — can't await in beforeunload
-    supabase
-      .from('documents')
-      .upsert(
-        { id: this.documentId, yjs_state: b64, title: 'Untitled Document', updated_at: new Date().toISOString() },
-        { onConflict: 'id', ignoreDuplicates: false },
-      )
-      .then(() => {});
+    this.saveState();
   };
 
-  /** Clean up everything */
-  destroy(): void {
+  /** Required by @platejs/yjs provider interface */
+  disconnect = (): void => {
+    if (this._isConnected) {
+      this._isConnected = false;
+      if (this._isSynced) {
+        this._isSynced = false;
+        this.onSyncChange?.(false);
+      }
+      this.onDisconnect?.();
+    }
+  };
+
+  /** Required by @platejs/yjs provider interface */
+  destroy = (): void => {
     this.destroyed = true;
     clearTimeout(this.saveTimer);
     this.doc.off('update', this.handleDocUpdate);
@@ -240,52 +237,29 @@ export class SupabaseSyncProvider {
       window.removeEventListener('beforeunload', this.handleBeforeUnload);
     }
 
-    // Save final state
     this.saveState();
 
-    // Unsubscribe from channel
     if (this.channel && supabase) {
       supabase.removeChannel(this.channel);
       this.channel = null;
     }
 
-    this.doc.destroy();
-  }
+    this.disconnect();
+  };
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+/** Register the 'supabase' provider type with @platejs/yjs. Call once at app startup. */
+export function registerSupabaseProvider(): void {
+  registerProviderType('supabase', SupabaseProviderWrapper as any);
+}
 
-/** Convert Slate JSON nodes to Y.XmlText delta (for migration) */
-function slateNodesToDelta(nodes: unknown[]): Array<{ insert: string; attributes?: Record<string, unknown> }> {
-  const delta: Array<{ insert: string; attributes?: Record<string, unknown> }> = [];
-
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i] as Record<string, unknown>;
-    if (!node || typeof node !== 'object') continue;
-
-    const children = node.children as Array<Record<string, unknown>> | undefined;
-    if (!children) continue;
-
-    for (const child of children) {
-      if (typeof child.text === 'string') {
-        const attrs: Record<string, unknown> = {};
-        if (child.bold) attrs.bold = true;
-        if (child.italic) attrs.italic = true;
-        if (child.underline) attrs.underline = true;
-        if (child.strikethrough) attrs.strikethrough = true;
-        if (child.code) attrs.code = true;
-
-        const entry: { insert: string; attributes?: Record<string, unknown> } = { insert: child.text as string };
-        if (Object.keys(attrs).length > 0) entry.attributes = attrs;
-        delta.push(entry);
-      }
-    }
-
-    // Add newline between blocks (except after last)
-    if (i < nodes.length - 1) {
-      delta.push({ insert: '\n' });
-    }
-  }
-
-  return delta;
+/** Save a document title to Supabase */
+export async function saveTitle(documentId: string, title: string): Promise<void> {
+  if (!supabase) return;
+  await supabase
+    .from('documents')
+    .upsert(
+      { id: documentId, title, updated_at: new Date().toISOString() },
+      { onConflict: 'id' },
+    );
 }
