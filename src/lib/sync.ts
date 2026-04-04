@@ -125,8 +125,7 @@ export class SupabaseSyncProvider {
     if (data.yjs_state) {
       // Binary Yjs state exists — apply it
       try {
-        // yjs_state comes as a hex-encoded string from Postgres bytea
-        const bytes = hexToBytes(data.yjs_state as string);
+        const bytes = fromBase64(data.yjs_state as string);
         Y.applyUpdate(this.doc, bytes, 'load');
       } catch (err) {
         console.warn('[Sync] Failed to load Yjs state:', err);
@@ -180,18 +179,21 @@ export class SupabaseSyncProvider {
 
     try {
       const state = Y.encodeStateAsUpdate(this.doc);
-      const hex = bytesToHex(state);
+      const b64 = toBase64(state);
 
-      await supabase
+      const { error } = await supabase
         .from('documents')
         .upsert(
           {
             id: this.documentId,
-            yjs_state: hex,
+            yjs_state: b64,
+            title: 'Untitled Document',
             updated_at: new Date().toISOString(),
           },
-          { onConflict: 'id' },
+          { onConflict: 'id', ignoreDuplicates: false },
         );
+
+      if (error) console.warn('[Sync] Save error:', error.message);
     } catch (err) {
       console.warn('[Sync] Failed to save state:', err);
     } finally {
@@ -215,17 +217,15 @@ export class SupabaseSyncProvider {
   private handleBeforeUnload = (): void => {
     if (!supabase || this.destroyed) return;
 
-    // Use sendBeacon-style: synchronous save via navigator.sendBeacon
-    // or just fire-and-forget the save
     const state = Y.encodeStateAsUpdate(this.doc);
-    const hex = bytesToHex(state);
+    const b64 = toBase64(state);
 
     // Fire-and-forget — can't await in beforeunload
     supabase
       .from('documents')
       .upsert(
-        { id: this.documentId, yjs_state: hex, updated_at: new Date().toISOString() },
-        { onConflict: 'id' },
+        { id: this.documentId, yjs_state: b64, title: 'Untitled Document', updated_at: new Date().toISOString() },
+        { onConflict: 'id', ignoreDuplicates: false },
       )
       .then(() => {});
   };
@@ -254,22 +254,6 @@ export class SupabaseSyncProvider {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/** Convert Uint8Array to hex string (for Postgres bytea via REST API) */
-function bytesToHex(bytes: Uint8Array): string {
-  return '\\x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** Convert hex string from Postgres bytea to Uint8Array */
-function hexToBytes(hex: string): Uint8Array {
-  // Postgres returns bytea as \x followed by hex
-  const clean = hex.startsWith('\\x') ? hex.slice(2) : hex;
-  const bytes = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < clean.length; i += 2) {
-    bytes[i / 2] = parseInt(clean.slice(i, i + 2), 16);
-  }
-  return bytes;
-}
 
 /** Convert Slate JSON nodes to Y.XmlText delta (for migration) */
 function slateNodesToDelta(nodes: unknown[]): Array<{ insert: string; attributes?: Record<string, unknown> }> {
