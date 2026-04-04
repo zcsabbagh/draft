@@ -171,8 +171,6 @@ const PageBreakPlugin = createPlatePlugin({
 const PAGE_VISIBLE = 1056;
 const PAGE_GAP = 40;
 const PAGE_CYCLE = PAGE_VISIBLE + PAGE_GAP; // 1096
-const PAGE_PADDING_TOP = 96;
-
 function PageBreakElement(props: any) {
   const spacerRef = useRef<HTMLDivElement>(null);
 
@@ -192,9 +190,8 @@ function PageBreakElement(props: any) {
         current = current.offsetParent as HTMLElement | null;
       }
 
-      // Convert to page-container coordinates (add padding-top)
-      const posInContainer = offsetTop + PAGE_PADDING_TOP;
-      const cyclePos = posInContainer % PAGE_CYCLE;
+      // offsetTop already includes .page-content's CSS padding (96px)
+      const cyclePos = offsetTop % PAGE_CYCLE;
       // Fill remaining space in this cycle (visible area + gap)
       const height = PAGE_CYCLE - cyclePos;
       el.style.height = `${Math.max(0, height)}px`;

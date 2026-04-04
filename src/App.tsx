@@ -19,6 +19,7 @@ import TemplatePage from './components/TemplatePage';
 import { submitDocument } from './lib/logger';
 import { saveTemplate, getTemplate } from './lib/templates';
 import { saveComments, loadComments, saveThread } from './lib/comments';
+import { loadDocument, saveDocument } from './lib/documents';
 
 // Lazy-loaded components — only fetched when first rendered (bundle-dynamic-imports)
 const CommandPalette = lazy(() => import('./components/CommandPalette'));
@@ -114,13 +115,14 @@ export default function App() {
   const [zoom, setZoom] = useState(100);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [editorInitialValue, setEditorInitialValue] = useState<unknown[]>(() => {
-    // Load persisted content for this document
+    // Load persisted content from localStorage as immediate fallback
     try {
       const saved = localStorage.getItem(`draft-content-${getDocumentIdFromUrl()}`);
       if (saved) return JSON.parse(saved);
     } catch { /* ignore parse errors */ }
     return INITIAL_VALUE;
   });
+  const [documentLoaded, setDocumentLoaded] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -140,6 +142,26 @@ export default function App() {
   useEffect(() => {
     getSessionId();
   }, []);
+
+  // Load document from Supabase (authoritative source for sharing)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('from_template')) return; // skip if loading from template
+    loadDocument(documentId).then((doc) => {
+      if (doc) {
+        setTitle(doc.title);
+        setEditorInitialValue(doc.content);
+        editorValueRef.current = doc.content;
+        setEditorKey((k) => k + 1);
+        // Sync to localStorage too
+        try {
+          localStorage.setItem(`draft-content-${documentId}`, JSON.stringify(doc.content));
+          localStorage.setItem(`draft-title-${documentId}`, doc.title);
+        } catch { /* ignore */ }
+      }
+      setDocumentLoaded(true);
+    });
+  }, [documentId]);
 
   // Load template content if opened via "Make a Copy" (?from_template=...)
   useEffect(() => {
@@ -224,18 +246,28 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Debounced save to Supabase
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   const handleEditorChange = useCallback((value: unknown[]) => {
     editorValueRef.current = value;
-    // Persist content to localStorage for this document
+    // Persist content to localStorage for this document (immediate)
     try {
       localStorage.setItem(`draft-content-${documentId}`, JSON.stringify(value));
     } catch { /* quota exceeded — ignore */ }
-  }, [documentId]);
+    // Debounced save to Supabase (2s after last change)
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveDocument(documentId, title, value);
+    }, 2000);
+  }, [documentId, title]);
 
   const handleTitleChange = useCallback((value: string) => {
     setTitle(value);
     localStorage.setItem(`draft-title-${documentId}`, value);
     localStorage.setItem('draft-title', value); // backward compat
+    // Save title to Supabase
+    saveDocument(documentId, value, editorValueRef.current);
   }, [documentId]);
 
   const handleRubricChange = useCallback((value: string) => {
