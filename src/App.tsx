@@ -143,19 +143,15 @@ export default function App() {
     getSessionId();
   }, []);
 
-  // Load document metadata from Supabase (title, and content as Yjs seed)
+  // Load document title from Supabase.
+  // Content sync is handled by Yjs/Hocuspocus — don't remount the editor.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('from_template')) return; // skip if loading from template
+    if (params.get('from_template')) return;
     loadDocument(documentId).then((doc) => {
       if (doc) {
         setTitle(doc.title);
-        // Use Supabase content as initial value (Yjs will override if it has state)
-        setEditorInitialValue(doc.content);
-        editorValueRef.current = doc.content;
-        setEditorKey((k) => k + 1);
         try {
-          localStorage.setItem(`draft-content-${documentId}`, JSON.stringify(doc.content));
           localStorage.setItem(`draft-title-${documentId}`, doc.title);
         } catch { /* ignore */ }
       }
