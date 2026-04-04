@@ -143,17 +143,17 @@ export default function App() {
     getSessionId();
   }, []);
 
-  // Load document from Supabase (authoritative source for sharing)
+  // Load document metadata from Supabase (title, and content as Yjs seed)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('from_template')) return; // skip if loading from template
     loadDocument(documentId).then((doc) => {
       if (doc) {
         setTitle(doc.title);
+        // Use Supabase content as initial value (Yjs will override if it has state)
         setEditorInitialValue(doc.content);
         editorValueRef.current = doc.content;
         setEditorKey((k) => k + 1);
-        // Sync to localStorage too
         try {
           localStorage.setItem(`draft-content-${documentId}`, JSON.stringify(doc.content));
           localStorage.setItem(`draft-title-${documentId}`, doc.title);
@@ -881,7 +881,7 @@ export default function App() {
               onCite={handleCite}
               onFeedbackSelection={handleFeedbackSelection}
               editorRef={plateEditorRef}
-              /* collabUrl removed — collab server no longer in use, enables native undo */
+              collabUrl="wss://draft-collab-production.up.railway.app"
               documentId={documentId}
               isMobile={isMobile}
               isLoading={isLoading}
