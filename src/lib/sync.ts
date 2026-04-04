@@ -97,7 +97,7 @@ class SupabaseProviderWrapper {
       await this.loadState();
 
       // 2. Join Supabase Realtime broadcast channel
-      this.channel = supabase.channel(`doc:${this.documentId}`, {
+      this.channel = supabase.channel(`doc-${this.documentId}`, {
         config: { broadcast: { self: false } },
       });
 
@@ -113,9 +113,15 @@ class SupabaseProviderWrapper {
         }
       });
 
-      this.channel.subscribe((status) => {
+      this.channel.subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
-          console.log(`[Sync] Connected to doc:${this.documentId}`);
+          console.log(`[Sync] Connected to doc-${this.documentId}`);
+          this.markConnected();
+          this.markSynced();
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn(`[Sync] Channel error for doc-${this.documentId}:`, err);
+          // Still mark as connected/synced so the editor is usable
+          // (persistence works, just no live broadcast)
           this.markConnected();
           this.markSynced();
         }
