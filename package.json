@@ -11,9 +11,6 @@
     "collab": "node collab/server.js"
   },
   "dependencies": {
-    "@hocuspocus/extension-database": "^3.4.4",
-    "@hocuspocus/provider": "^3.4.4",
-    "@hocuspocus/server": "^3.4.4",
     "@platejs/basic-nodes": "^52.0.11",
     "@platejs/caption": "^52.0.11",
     "@platejs/comment": "^52.0.11",

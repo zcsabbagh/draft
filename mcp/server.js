@@ -4,9 +4,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
-import WebSocket from 'ws';
 import * as Y from 'yjs';
-import { HocuspocusProvider } from '@hocuspocus/provider';
+import { createClient } from '@supabase/supabase-js';
 import { createEditor, Transforms, Editor, Node, Text } from 'slate';
 import { withYjs, YjsEditor } from '@slate-yjs/core';
 import fs from 'fs';
@@ -20,56 +19,133 @@ const DIST_DIR = path.join(__dirname, 'dist');
 const DRAFT_APP_URL = process.env.DRAFT_APP_URL || 'https://draft-blue.vercel.app';
 const RESOURCE_URI = 'ui://drafts/document-preview.html';
 
-const DEFAULT_HOCUSPOCUS_URL = process.env.DRAFTS_SERVER_URL || 'wss://draft-collab-production.up.railway.app';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://epoviaqcrixushetuoze.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwb3ZpYXFjcml4dXNoZXR1b3plIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMTQ0NTIsImV4cCI6MjA5MDc5MDQ1Mn0.j2u_34so_xCunG2HhRgqeniTv92WFiw9wGjFjZuPnT8';
 const DEFAULT_DOCUMENT = process.env.DRAFTS_DOCUMENT || 'default';
 
-// ── Yjs document connection (via Hocuspocus) ────────────────────────
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── Yjs document connection (via Supabase Realtime) ─────────────────
 
 let yjsDoc = null;       // Y.Doc instance
-let yjsProvider = null;  // HocuspocusProvider
+let yjsChannel = null;   // Supabase Realtime channel
 let yjsConnected = false;
 let yjsDocName = null;
-let yjsServerUrl = null;
+let clientId = Math.random().toString(36).slice(2, 10);
+let saveTimer = null;
 
-function connectToDocument(url, documentName, token) {
-  return new Promise((resolve, reject) => {
-    // Disconnect existing connection
-    if (yjsProvider) {
-      yjsProvider.destroy();
-      yjsProvider = null;
+/** Encode Uint8Array as base64 */
+function toBase64(data) {
+  return Buffer.from(data).toString('base64');
+}
+
+/** Decode base64 to Uint8Array */
+function fromBase64(b64) {
+  return new Uint8Array(Buffer.from(b64, 'base64'));
+}
+
+async function connectToDocument(url, documentName) {
+  // Disconnect existing connection
+  if (yjsChannel) {
+    supabase.removeChannel(yjsChannel);
+    yjsChannel = null;
+  }
+  if (yjsDoc) {
+    yjsDoc.off('update', handleDocUpdate);
+    yjsDoc.destroy();
+  }
+
+  yjsDoc = new Y.Doc();
+  yjsDocName = documentName;
+
+  // 1. Load persisted state from Supabase
+  const { data } = await supabase
+    .from('documents')
+    .select('yjs_state')
+    .eq('id', documentName)
+    .single();
+
+  if (data?.yjs_state) {
+    try {
+      const bytes = fromBase64(data.yjs_state);
+      Y.applyUpdate(yjsDoc, bytes, 'load');
+      console.error(`[Drafts] Loaded state for "${documentName}" (${data.yjs_state.length} bytes)`);
+    } catch (err) {
+      console.error(`[Drafts] Failed to load state:`, err.message);
     }
+  }
 
-    yjsDoc = new Y.Doc();
-    yjsServerUrl = url;
-    yjsDocName = documentName;
+  // 2. Listen for local changes → broadcast + persist
+  yjsDoc.on('update', handleDocUpdate);
 
-    yjsProvider = new HocuspocusProvider({
-      url,
-      name: documentName,
-      document: yjsDoc,
-      token: token || JSON.stringify({ name: 'MCP Agent', color: '#C66140', role: 'editor' }),
-      WebSocketPolyfill: WebSocket,
-      onSynced() {
+  // 3. Join Supabase Realtime broadcast channel
+  yjsChannel = supabase.channel(`doc-${documentName}`, {
+    config: { broadcast: { self: false } },
+  });
+
+  yjsChannel.on('broadcast', { event: 'yjs-update' }, (payload) => {
+    if (payload.payload?.clientId === clientId) return;
+    try {
+      const update = fromBase64(payload.payload.update);
+      Y.applyUpdate(yjsDoc, update, 'remote');
+    } catch (err) {
+      console.error('[Drafts] Failed to apply remote update:', err.message);
+    }
+  });
+
+  return new Promise((resolve, reject) => {
+    yjsChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
         yjsConnected = true;
-        console.error(`[Drafts] Synced to "${documentName}" at ${url}`);
+        console.error(`[Drafts] Connected to doc-${documentName} via Supabase Realtime`);
         resolve();
-      },
-      onClose() {
-        yjsConnected = false;
-        console.error(`[Drafts] Disconnected from "${documentName}"`);
-      },
-      onDestroy() {
-        yjsConnected = false;
-      },
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error(`[Drafts] Channel error for doc-${documentName}`);
+        // Still resolve — persistence works even without broadcast
+        yjsConnected = true;
+        resolve();
+      }
     });
 
-    // Timeout after 10s
     setTimeout(() => {
       if (!yjsConnected) {
-        reject(new Error(`Timed out connecting to ${url} document "${documentName}"`));
+        reject(new Error(`Timed out connecting to document "${documentName}"`));
       }
     }, 10000);
   });
+}
+
+/** Handle local Y.Doc updates — broadcast and schedule persist */
+function handleDocUpdate(update, origin) {
+  if (origin === 'remote' || origin === 'load') return;
+
+  // Broadcast via Supabase Realtime
+  if (yjsChannel) {
+    yjsChannel.send({
+      type: 'broadcast',
+      event: 'yjs-update',
+      payload: { update: toBase64(update), clientId },
+    });
+  }
+
+  // Debounced persist (3s)
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveState(), 3000);
+}
+
+/** Persist Y.Doc state to Supabase */
+async function saveState() {
+  if (!yjsDoc || !yjsDocName) return;
+  const state = Y.encodeStateAsUpdate(yjsDoc);
+  const b64 = toBase64(state);
+  const { error } = await supabase
+    .from('documents')
+    .upsert(
+      { id: yjsDocName, yjs_state: b64, title: 'Untitled Document', updated_at: new Date().toISOString() },
+      { onConflict: 'id', ignoreDuplicates: false },
+    );
+  if (error) console.error('[Drafts] Save error:', error.message);
+  else console.error(`[Drafts] Saved state for "${yjsDocName}"`);
 }
 
 // ── Yjs ↔ Slate helpers ─────────────────────────────────────────────
@@ -244,25 +320,22 @@ function parseShareUrl(shareUrl) {
   return null;
 }
 
-// 0. connect_document — connect to a document via Hocuspocus URL or Draft share URL
+// 0. connect_document — connect to a document via Supabase
 //    Registered as an MCP App tool to show a live document preview
 registerAppTool(
   server,
   'connect_document',
   {
     title: 'Connect to Document',
-    description: `Connect to a collaborative document. You can pass a Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) and the document ID will be extracted automatically. Or provide a Hocuspocus WebSocket URL and document name directly. Defaults to ${DEFAULT_HOCUSPOCUS_URL} if no URL provided.`,
+    description: `Connect to a collaborative document. You can pass a Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) and the document ID will be extracted automatically. Or provide a document name directly. Defaults to "${DEFAULT_DOCUMENT}" if nothing provided.`,
     inputSchema: {
-      url: z.string().optional().describe(`Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay) or Hocuspocus WebSocket URL (default: ${DEFAULT_HOCUSPOCUS_URL})`),
+      url: z.string().optional().describe('Draft share URL (e.g. https://draft-blue.vercel.app/d/my-essay)'),
       document: z.string().optional().describe(`Document name/ID to connect to (default: "${DEFAULT_DOCUMENT}"). Ignored if a share URL is provided.`),
-      name: z.string().optional().describe('Your display name (shown to other collaborators)'),
-      color: z.string().optional().describe('Your cursor color as hex, e.g. #C66140'),
     },
     _meta: { ui: { resourceUri: RESOURCE_URI } },
   },
-  async ({ url, document: docName, name, color }) => {
+  async ({ url, document: docName }) => {
     try {
-      let serverUrl = DEFAULT_HOCUSPOCUS_URL;
       let documentName = docName || DEFAULT_DOCUMENT;
 
       // If url looks like a Draft share URL, parse the document ID from it
@@ -270,26 +343,16 @@ registerAppTool(
         const parsedDocId = parseShareUrl(url);
         if (parsedDocId) {
           documentName = parsedDocId;
-          // Use default Hocuspocus URL for share links
-        } else if (url.startsWith('ws://') || url.startsWith('wss://')) {
-          serverUrl = url;
         } else {
           // Try treating it as a share URL with just a path
           const withOrigin = parseShareUrl(`https://draft-blue.vercel.app${url.startsWith('/') ? '' : '/'}${url}`);
           if (withOrigin) {
             documentName = withOrigin;
-          } else {
-            serverUrl = url;
           }
         }
       }
 
-      const token = JSON.stringify({
-        name: name || 'MCP Agent',
-        color: color || '#C66140',
-        role: 'editor',
-      });
-      await connectToDocument(serverUrl, documentName, token);
+      await connectToDocument(SUPABASE_URL, documentName);
 
       const editorUrl = `${DRAFT_APP_URL}/d/${encodeURIComponent(documentName)}?embed`;
 
@@ -299,7 +362,7 @@ registerAppTool(
           text: JSON.stringify({
             connected: true,
             document: documentName,
-            server: serverUrl,
+            server: 'supabase',
             editorUrl,
           }),
         }],
@@ -332,12 +395,7 @@ registerAppTool(
         documentId += chars[Math.floor(Math.random() * chars.length)];
       }
 
-      const token = JSON.stringify({
-        name: 'MCP Agent',
-        color: '#C66140',
-        role: 'editor',
-      });
-      await connectToDocument(DEFAULT_HOCUSPOCUS_URL, documentId, token);
+      await connectToDocument(SUPABASE_URL, documentId);
 
       // Wait a moment for the document to be ready
       await new Promise(r => setTimeout(r, 300));
@@ -576,7 +634,7 @@ server.tool(
         text: JSON.stringify({
           connected: yjsConnected,
           document: yjsDocName,
-          server: yjsServerUrl,
+          server: 'supabase',
         }, null, 2),
       }],
     };
