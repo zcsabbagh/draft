@@ -1,4 +1,4 @@
-import { Server } from '@hocuspocus/server';
+import { Hocuspocus } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
 import SQLite from 'better-sqlite3';
 import { fileURLToPath } from 'url';
@@ -205,7 +205,7 @@ const httpServer = createServer((req, res) => {
 
 // ── Hocuspocus ──────────────────────────────────────────────────────
 
-const hocuspocus = Server.configure({
+const hocuspocus = new Hocuspocus({
   extensions: [
     new Database({
       fetch: async ({ documentName }) => {
