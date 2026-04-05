@@ -180,36 +180,65 @@ function PageBreakElement(props: any) {
   useLayoutEffect(() => {
     const el = spacerRef.current;
     if (!el) return;
+    const pageContent = el.closest('.page-content') as HTMLElement | null;
+    if (!pageContent) return;
+
+    let rafId: number | null = null;
+    let recalcing = false;
 
     const recalc = () => {
-      // Walk up to find offsetTop relative to .page-content (position: relative)
-      let offsetTop = 0;
-      let current: HTMLElement | null = el;
-      const pageContent = el.closest('.page-content') as HTMLElement | null;
-      if (!pageContent) return;
+      if (recalcing) return;
+      recalcing = true;
+      try {
+        // Use getBoundingClientRect for reliable position measurement
+        // (offsetTop walking is fragile across Slate's nested span wrappers).
+        // Temporarily collapse the spacer so our measurement reflects the
+        // position the spacer WOULD have at height 0 — preventing feedback
+        // loops where the spacer's own height shifts its position.
+        const prevHeight = el.style.height;
+        el.style.height = '0px';
 
-      while (current && current !== pageContent) {
-        offsetTop += current.offsetTop;
-        current = current.offsetParent as HTMLElement | null;
+        const spacerRect = el.getBoundingClientRect();
+        const pageRect = pageContent.getBoundingClientRect();
+        // Position of spacer relative to page-content's padding-box top.
+        // Subtract padding-top because the gradient background starts at
+        // the border-box top but content positions are measured from the
+        // content-box (inside padding).
+        const paddingTop = parseFloat(getComputedStyle(pageContent).paddingTop) || 0;
+        const relativeTop = spacerRect.top - pageRect.top - paddingTop;
+
+        // relativeTop is now 0 for the first paragraph, PAGE_CYCLE for
+        // the first paragraph on page 2, etc.
+        const cyclePos = ((relativeTop % PAGE_CYCLE) + PAGE_CYCLE) % PAGE_CYCLE;
+        // Fill remaining space in this cycle, then add PAGE_MARGIN so the
+        // next block begins inset from the new page edge (Google Docs style).
+        const height = PAGE_CYCLE - cyclePos + PAGE_MARGIN;
+
+        // Only update if the change is meaningful (avoids observer feedback).
+        const newHeight = `${Math.max(0, Math.round(height))}px`;
+        if (newHeight !== prevHeight) {
+          el.style.height = newHeight;
+        } else {
+          el.style.height = prevHeight;
+        }
+      } finally {
+        recalcing = false;
       }
-
-      // offsetTop already includes .page-content's CSS padding (96px)
-      const cyclePos = offsetTop % PAGE_CYCLE;
-      // Fill remaining space in this cycle + top margin for next page
-      // so content starts inset from the page edge, like Google Docs
-      const height = PAGE_CYCLE - cyclePos + PAGE_MARGIN;
-      el.style.height = `${Math.max(0, height)}px`;
     };
 
     recalc();
 
     // Recalculate when content above changes (text added/removed shifts our position)
-    const pageContent = el.closest('.page-content');
-    if (!pageContent) return;
-    const observer = new MutationObserver(() => requestAnimationFrame(recalc));
+    const observer = new MutationObserver(() => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(recalc);
+    });
     observer.observe(pageContent, { childList: true, subtree: true, characterData: true });
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   return (

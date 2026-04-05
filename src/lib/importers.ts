@@ -251,13 +251,20 @@ function convertElement(el: HTMLElement): SlateElement[] {
 }
 
 function getInlineChildren(el: HTMLElement): SlateNode[] {
+  // Block elements from Google Docs / Word often carry marks on themselves
+  // (e.g., `<p class="c1">` where `.c1 { font-weight: 700 }` — after class
+  // resolution, the <p> has inline fontWeight=700). Read those marks and
+  // inherit them into the children.
+  const blockMarks = getMarksFromElement(el);
+  const hasBlockMarks = Object.keys(blockMarks).length > 0;
+
   const result: SlateNode[] = [];
 
   for (const child of Array.from(el.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) {
       const text = child.textContent || '';
       if (text) {
-        result.push({ text });
+        result.push(hasBlockMarks ? ({ text, ...blockMarks } as SlateText) : { text });
       }
       continue;
     }
@@ -269,17 +276,37 @@ function getInlineChildren(el: HTMLElement): SlateNode[] {
     // If it's a block element nested inside, just grab its text
     if (isBlockElement(tag) && tag !== 'br') {
       const nestedInlines = getInlineChildren(childEl);
-      result.push(...nestedInlines);
+      // Inherit block marks into nested inlines too
+      if (hasBlockMarks) {
+        result.push(...nestedInlines.map((n) => ('text' in n ? { ...blockMarks, ...n } as SlateText : n)));
+      } else {
+        result.push(...nestedInlines);
+      }
       continue;
     }
 
     if (tag === 'br') {
-      result.push({ text: '\n' });
+      result.push(hasBlockMarks ? ({ text: '\n', ...blockMarks } as SlateText) : { text: '\n' });
       continue;
     }
 
-    const inlineNodes = convertInlineElement(childEl);
-    result.push(...inlineNodes);
+    // For inline children, merge block marks with inline element's own marks.
+    // Handle <a> specially (it produces an element, not marks).
+    if (hasBlockMarks) {
+      if (tag === 'a') {
+        const href = childEl.getAttribute('href') || '';
+        const linkChildren = getInlineChildrenWithMarks(childEl, blockMarks);
+        result.push({ type: 'a', url: href, children: linkChildren } as SlateElement);
+      } else {
+        const childOwnMarks = getMarksFromElement(childEl);
+        const mergedMarks = { ...blockMarks, ...childOwnMarks };
+        const childNodes = getInlineChildrenWithMarks(childEl, mergedMarks);
+        result.push(...childNodes);
+      }
+    } else {
+      const inlineNodes = convertInlineElement(childEl);
+      result.push(...inlineNodes);
+    }
   }
 
   if (result.length === 0) {
