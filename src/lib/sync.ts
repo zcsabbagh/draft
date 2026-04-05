@@ -33,7 +33,8 @@ function fromBase64(base64: string): Uint8Array {
 
 /**
  * Provider wrapper matching @platejs/yjs provider interface.
- * Implements the same contract as HocuspocusProviderWrapper.
+ * Must implement: connect(), disconnect(), destroy(), isConnected, isSynced
+ * Plus accept callbacks: onConnect, onDisconnect, onError, onSyncChange
  */
 class SupabaseProviderWrapper {
   _isConnected = false;
@@ -52,6 +53,7 @@ class SupabaseProviderWrapper {
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
   private isSaving = false;
   private destroyed = false;
+  private connecting = false;
 
   constructor({
     doc,
@@ -77,18 +79,37 @@ class SupabaseProviderWrapper {
     this.onSyncChange = onSyncChange;
     this.clientId = Math.random().toString(36).slice(2, 10);
 
-    // Listen for local Y.Doc changes → broadcast + persist
+    // Listen for Y.Doc changes → broadcast + persist
     this.doc.on('update', this.handleDocUpdate);
 
-    // Auto-connect
-    this.connect();
+    // Do NOT auto-connect here. @platejs/yjs calls connect() itself
+    // when autoConnect: true is passed to yjs.init().
   }
 
-  private async connect(): Promise<void> {
+  /** Required getter — @platejs/yjs checks provider.isConnected */
+  get isConnected(): boolean {
+    return this._isConnected;
+  }
+
+  /** Required getter — @platejs/yjs checks provider.isSynced */
+  get isSynced(): boolean {
+    return this._isSynced;
+  }
+
+  /** Public connect — called by @platejs/yjs init flow */
+  connect = async (): Promise<void> => {
+    // Guard against double-connect
+    if (this.connecting || this._isConnected) {
+      console.log('[Sync] Already connecting/connected, skipping');
+      return;
+    }
+    this.connecting = true;
+
     if (!supabase) {
       console.warn('[Sync] Supabase not configured — running offline');
       this.markConnected();
       this.markSynced();
+      this.connecting = false;
       return;
     }
 
@@ -115,13 +136,12 @@ class SupabaseProviderWrapper {
 
       this.channel.subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
-          console.log(`[Sync] Connected to doc-${this.documentId}`);
+          console.log(`[Sync] ✓ Connected to doc-${this.documentId} (client: ${this.clientId})`);
           this.markConnected();
           this.markSynced();
         } else if (status === 'CHANNEL_ERROR') {
           console.warn(`[Sync] Channel error for doc-${this.documentId}:`, err);
           // Still mark as connected/synced so the editor is usable
-          // (persistence works, just no live broadcast)
           this.markConnected();
           this.markSynced();
         }
@@ -133,12 +153,16 @@ class SupabaseProviderWrapper {
       }
     } catch (err) {
       this.onError?.(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      this.connecting = false;
     }
-  }
+  };
 
   private markConnected(): void {
-    this._isConnected = true;
-    this.onConnect?.();
+    if (!this._isConnected) {
+      this._isConnected = true;
+      this.onConnect?.();
+    }
   }
 
   private markSynced(): void {
@@ -168,8 +192,9 @@ class SupabaseProviderWrapper {
     }
   }
 
-  /** Handle local Y.Doc updates — broadcast + schedule persist */
+  /** Handle Y.Doc updates — broadcast to other clients + schedule persist */
   private handleDocUpdate = (update: Uint8Array, origin: unknown): void => {
+    // Skip remote updates (from other clients) and load updates (from DB)
     if (this.destroyed || origin === 'remote' || origin === 'load') return;
 
     if (this.channel) {

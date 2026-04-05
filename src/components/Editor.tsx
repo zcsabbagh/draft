@@ -68,6 +68,7 @@ import { getFontByName, FONT_OPTIONS } from '../lib/fonts';
 import type { FeedbackComment } from '../lib/types';
 import type { Citation } from '../lib/api';
 import { useEditorBridge } from '../hooks/useEditorBridge';
+import { htmlToSlateNodes, plainTextToSlateNodes } from '../lib/importers';
 // CursorOverlay temporarily disabled for debugging
 // import CursorOverlay from './CursorOverlay';
 
@@ -1366,19 +1367,58 @@ export default function Editor({
             placeholder="Start writing your draft..."
             style={{ fontFamily }}
             onPaste={(e: React.ClipboardEvent) => {
-              const items = e.clipboardData?.items;
-              if (!items) return;
+              const cd = e.clipboardData;
+              if (!cd) return;
+
+              // 1. Image files — existing behavior
+              const items = cd.items;
               const imageFiles: File[] = [];
-              for (let i = 0; i < items.length; i++) {
-                if (items[i].type.startsWith('image/')) {
-                  const file = items[i].getAsFile();
-                  if (file) imageFiles.push(file);
+              if (items) {
+                for (let i = 0; i < items.length; i++) {
+                  if (items[i].type.startsWith('image/')) {
+                    const file = items[i].getAsFile();
+                    if (file) imageFiles.push(file);
+                  }
                 }
               }
               if (imageFiles.length > 0) {
                 e.preventDefault();
                 insertImageFiles(editor, imageFiles);
+                return;
               }
+
+              // 2. HTML content — use our importer to strip styles and map to Slate
+              const html = cd.getData('text/html');
+              if (html && html.trim()) {
+                e.preventDefault();
+                try {
+                  const nodes = htmlToSlateNodes(html);
+                  if (nodes.length > 0) {
+                    // Slate's insertFragment handles multi-block insertion properly
+                    // (merges the first block with current, keeps rest as new blocks)
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (editor as any).insertFragment(nodes);
+                  }
+                } catch (err) {
+                  console.warn('[Paste] HTML parse failed, falling back to plain text:', err);
+                  const text = cd.getData('text/plain');
+                  if (text) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (editor as any).insertFragment(plainTextToSlateNodes(text));
+                  }
+                }
+                return;
+              }
+
+              // 3. Plain text fallback — let default handle single-line paste,
+              // but for multi-line text, convert to paragraphs
+              const text = cd.getData('text/plain');
+              if (text && text.includes('\n')) {
+                e.preventDefault();
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (editor as any).insertFragment(plainTextToSlateNodes(text));
+              }
+              // else: let Slate default handle single-line plain text paste
             }}
             onDrop={(e: React.DragEvent) => {
               const files = e.dataTransfer?.files;
