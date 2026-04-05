@@ -247,6 +247,7 @@ interface ChatPanelProps {
   onChatMessage?: (message: string, history: ChatMessage[], onChunk: (text: string) => void) => Promise<string>;
   onResolveComment?: (id: string) => void;
   resolvedComments?: Set<string>;
+  onRequestDocumentFlow?: () => Promise<string>;
 }
 
 export default function ChatPanel({
@@ -264,9 +265,14 @@ export default function ChatPanel({
   onChatMessage,
   onResolveComment,
   resolvedComments,
+  onRequestDocumentFlow,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('feedback');
+  const [feedbackMode, setFeedbackMode] = useState<'line' | 'flow'>('line');
+  const [flowFeedback, setFlowFeedback] = useState<string>('');
+  const [flowLoading, setFlowLoading] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -363,6 +369,37 @@ export default function ChatPanel({
     });
   }, []);
 
+  const handleModeSwitch = useCallback(async (mode: 'line' | 'flow') => {
+    setFeedbackMode(mode);
+    if (mode === 'flow' && !flowFeedback && !flowLoading && onRequestDocumentFlow) {
+      setFlowLoading(true);
+      setFlowError(null);
+      try {
+        const text = await onRequestDocumentFlow();
+        setFlowFeedback(text);
+      } catch (e) {
+        setFlowError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setFlowLoading(false);
+      }
+    }
+  }, [flowFeedback, flowLoading, onRequestDocumentFlow]);
+
+  const handleRegenerateFlow = useCallback(async () => {
+    if (!onRequestDocumentFlow || flowLoading) return;
+    setFlowLoading(true);
+    setFlowError(null);
+    setFlowFeedback('');
+    try {
+      const text = await onRequestDocumentFlow();
+      setFlowFeedback(text);
+    } catch (e) {
+      setFlowError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFlowLoading(false);
+    }
+  }, [onRequestDocumentFlow, flowLoading]);
+
   const unresolvedCount = useMemo(
     () => comments.filter((c) => !resolved.has(c.id)).length,
     [comments, resolved],
@@ -379,7 +416,118 @@ export default function ChatPanel({
       <div key={activeTab} className="flex-1 flex flex-col overflow-hidden animate-tab-fade-in">
         {activeTab === 'feedback' && (
           <>
-            {activeComment ? (
+            {/* Mode segmented control — only shown when no active comment thread */}
+            {!activeComment && (
+              <div className="px-4 pt-1 pb-2 flex justify-center">
+                <div className="inline-flex items-center bg-cream-dark rounded-full p-0.5 border border-border/60">
+                  <button
+                    onClick={() => handleModeSwitch('line')}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-150 ${
+                      feedbackMode === 'line'
+                        ? 'bg-white text-ink shadow-sm'
+                        : 'text-ink-lighter hover:text-ink-light'
+                    }`}
+                    style={feedbackMode === 'line' ? { color: '#C66140' } : undefined}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 3h8M2 6h8M2 9h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                    </svg>
+                    Line edits
+                  </button>
+                  <button
+                    onClick={() => handleModeSwitch('flow')}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all duration-150 ${
+                      feedbackMode === 'flow'
+                        ? 'bg-white text-ink shadow-sm'
+                        : 'text-ink-lighter hover:text-ink-light'
+                    }`}
+                    style={feedbackMode === 'flow' ? { color: '#C66140' } : undefined}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M3 2.5h6M3 5h6M3 7.5h6M3 10h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.4" />
+                      <path d="M1.5 1.5l2 2M8.5 8.5l2 2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                      <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.3" fill="none" />
+                    </svg>
+                    Document flow
+                  </button>
+                </div>
+              </div>
+            )}
+            {feedbackMode === 'flow' && !activeComment ? (
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {flowLoading ? (
+                  <div className="flex flex-col items-center justify-center h-40 gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#C66140', animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#C66140', animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#C66140', animationDelay: '300ms' }} />
+                    </div>
+                    <span className="text-sm text-ink-lighter">Reading your draft end-to-end...</span>
+                  </div>
+                ) : flowError ? (
+                  <div className="p-6 text-sm text-red-600">
+                    <p className="mb-3">Couldn&rsquo;t load document-flow feedback.</p>
+                    <p className="text-xs text-ink-lighter mb-4">{flowError}</p>
+                    <button
+                      onClick={handleRegenerateFlow}
+                      className="text-xs px-3 py-1.5 rounded-full border border-border hover:bg-cream-dark transition-colors text-ink"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : flowFeedback ? (
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold"
+                          style={{ backgroundColor: '#C66140', color: '#FAFAF8' }}
+                        >
+                          ¶
+                        </div>
+                        <span className="text-xs font-semibold text-ink">Editor&rsquo;s note</span>
+                      </div>
+                      <button
+                        onClick={handleRegenerateFlow}
+                        className="text-[11px] text-ink-lighter hover:text-ink-light transition-colors px-2 py-1 rounded-md hover:bg-cream-dark"
+                        title="Regenerate"
+                      >
+                        Regenerate
+                      </button>
+                    </div>
+                    <div
+                      className="text-sm leading-[1.65] text-ink whitespace-pre-wrap"
+                      style={{ fontFamily: 'inherit' }}
+                    >
+                      {flowFeedback}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full px-6 py-10 text-center">
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center mb-4"
+                      style={{ backgroundColor: '#FFF3E8', color: '#C66140' }}
+                    >
+                      <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                        <path d="M5 4h9M5 8h12M5 12h12M5 16h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-medium text-ink mb-1.5">Document flow feedback</p>
+                    <p className="text-xs text-ink-lighter leading-relaxed max-w-[240px] mb-5">
+                      A holistic critique of your thesis, section-to-section flow, pacing, and whether your conclusion earns its claims.
+                    </p>
+                    <button
+                      onClick={handleRegenerateFlow}
+                      disabled={!onRequestDocumentFlow}
+                      className="text-xs px-4 py-2 rounded-full font-medium transition-colors disabled:opacity-40"
+                      style={{ backgroundColor: '#C66140', color: '#FAFAF8' }}
+                    >
+                      Request critique
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : activeComment ? (
               <>
                 {/* Back button + active comment header */}
                 <div className="px-4 py-2 border-b border-border flex items-center gap-3">

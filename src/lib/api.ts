@@ -95,6 +95,56 @@ export async function requestFeedback(
   return results.flat();
 }
 
+// ── Document flow feedback (holistic critique) ──
+
+const DOCUMENT_FLOW_SYSTEM_PROMPT = `You are a rigorous essay editor giving HOLISTIC, ESSAY-LEVEL feedback on a draft. You are not a sentence-level copy editor. Do NOT comment on individual phrasings, word choice, or per-sentence issues. Instead, step back and evaluate the piece as a whole.
+
+Critique the document on these dimensions:
+1. Thesis clarity — Is there a clear central claim? Does the opening set it up, and does the rest of the piece deliver on it?
+2. Section-to-section logical flow — Do sections connect? Are transitions earned, or do they feel like non-sequiturs?
+3. Argumentative gaps — Where does the author make unsupported leaps? What claims need more scaffolding?
+4. Pacing — Does the piece drag, rush, or repeat itself? Does any section deserve more (or less) space?
+5. Whether the conclusion earns its claims — Does the ending feel inevitable given what came before, or does it overreach?
+
+Write your response as 3-6 paragraphs of flowing prose. Do NOT use bullet points. Do NOT number sections. Do NOT use markdown headers. Write as if you were a trusted editor writing a private note to the author after one careful read. Be direct, specific, and generous. Quote short phrases from the draft only when necessary to ground a point. If the draft is genuinely strong in some dimension, say so — but don't pad with praise.
+
+Return ONLY the prose critique, no preamble, no sign-off.`;
+
+export async function getDocumentFlowFeedback(
+  documentText: string,
+  options?: { rubric?: string; context?: string }
+): Promise<string> {
+  let system = DOCUMENT_FLOW_SYSTEM_PROMPT;
+
+  if (options?.rubric?.trim()) {
+    system += `\n\nThe author has specified the following rubric for feedback. Weigh these priorities in your critique:\n${options.rubric.trim()}`;
+  }
+  if (options?.context?.trim()) {
+    system += `\n\nAdditional context about the document provided by the author:\n${options.context.trim()}`;
+  }
+
+  const response = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: documentText }],
+      system,
+      max_tokens: 2048,
+      session_id: getSessionId(),
+      document_id: getDocumentId(),
+      request_type: 'feedback_document_flow',
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`API error: ${err}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text as string;
+}
+
 export async function chatWithClaude(
   documentContext: string,
   feedbackComment: FeedbackComment,

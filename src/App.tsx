@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import Editor from './components/Editor';
 import ChatPanel from './components/ChatPanel';
 import TimelineScrubber from './components/TimelineScrubber';
-import { requestFeedback, chatWithClaude, chatAboutDocumentStream, getCitation } from './lib/api';
+import { requestFeedback, chatWithClaude, chatAboutDocumentStream, getCitation, getDocumentFlowFeedback } from './lib/api';
 import type { Citation } from './lib/api';
 import { getFontByName, loadGoogleFont } from './lib/fonts';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -342,6 +342,11 @@ export default function App() {
       shimmerTimerRef.current = setTimeout(() => setShimmerFading(false), 800);
     }
   }, [rubric, context, documentId]);
+
+  const handleRequestDocumentFlow = useCallback(async () => {
+    const docText = extractText(editorValueRef.current);
+    return await getDocumentFlowFeedback(docText, { rubric, context });
+  }, [rubric, context]);
 
   const handleSendMessage = useCallback(
     async (commentId: string, message: string) => {
@@ -924,6 +929,7 @@ export default function App() {
                   context={context}
                   onContextChange={handleContextChange}
                   onChatMessage={handleChatMessage}
+                  onRequestDocumentFlow={handleRequestDocumentFlow}
                 />
               </div>
             </div>
@@ -946,6 +952,7 @@ export default function App() {
               context={context}
               onContextChange={handleContextChange}
               onChatMessage={handleChatMessage}
+              onRequestDocumentFlow={handleRequestDocumentFlow}
             />
           </div>
         )}
