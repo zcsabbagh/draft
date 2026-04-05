@@ -46,6 +46,8 @@ function countWords(text: string): number {
 
 export default function StatusBar({ editorRef, getDocumentText, getSelectedText }: StatusBarProps) {
   const [wordCount, setWordCount] = useState(0);
+  const [charCount, setCharCount] = useState(0);
+  const [showChars, setShowChars] = useState(false);
   const [isSelection, setIsSelection] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -111,9 +113,12 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     if (selected) {
       setIsSelection(true);
       setWordCount(countWords(selected));
+      setCharCount(selected.length);
     } else {
       setIsSelection(false);
-      setWordCount(countWords(getDocumentText()));
+      const text = getDocumentText();
+      setWordCount(countWords(text));
+      setCharCount(text.length);
     }
   }, [getDocumentText, getSelectedText]);
 
@@ -162,7 +167,7 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     if (isSpinning) return;
     setIsSpinning(true);
 
-    const actualCount = wordCount;
+    const actualCount = showChars ? charCount : wordCount;
     // Keep the same number of digits during spin to prevent layout shift
     const digits = String(actualCount).length;
     const lo = Math.pow(10, digits - 1);
@@ -394,8 +399,9 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
   }, []);
 
   // Format with fixed width: pad to same number of digits as the real count
-  const digits = String(wordCount).length;
-  const displayStr = String(displayCount).padStart(digits, '\u2007'); // figure space
+  const activeCount = showChars ? charCount : wordCount;
+  const digits = String(activeCount).length;
+  const displayStr = String(isSpinning ? displayCount : activeCount).padStart(digits, '\u2007'); // figure space
 
   // Portal to document.body so fixed elements aren't clipped by
   // overflow:hidden ancestors — fixes iOS keyboard positioning
@@ -484,20 +490,21 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
           </svg>
         </button>
 
-        {/* Word count */}
+        {/* Word / character count — click to toggle */}
         <div
           className="text-xs rounded-full"
           onMouseEnter={handleMouseEnter}
+          onClick={() => setShowChars(prev => !prev)}
           style={{
             backgroundColor: 'var(--color-cream-dark, #F0F0EC)',
             color: 'var(--color-ink-lighter, #9B9B9B)',
             padding: '4px 12px',
-            cursor: 'default',
+            cursor: 'pointer',
             userSelect: 'none',
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {displayStr} {isSelection ? 'selected' : 'words'}
+          {displayStr} {isSelection ? 'selected' : showChars ? 'chars' : 'words'}
         </div>
       </div>
     </>,

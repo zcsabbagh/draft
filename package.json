@@ -11,9 +11,14 @@
     "collab": "node collab/server.js"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@platejs/autoformat": "^52.3.10",
     "@platejs/basic-nodes": "^52.0.11",
     "@platejs/caption": "^52.0.11",
     "@platejs/comment": "^52.0.11",
+    "@platejs/dnd": "^52.3.16",
     "@platejs/indent": "^52.0.11",
     "@platejs/link": "^52.0.11",
     "@platejs/list": "^52.0.11",

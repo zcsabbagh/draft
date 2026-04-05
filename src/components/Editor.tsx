@@ -57,6 +57,8 @@ import {
 import { ListPlugin } from '@platejs/list/react';
 import { LinkPlugin } from '@platejs/link/react';
 import { ImagePlugin } from '@platejs/media/react';
+import { AutoformatPlugin } from '@platejs/autoformat';
+import { DndPlugin } from '@platejs/dnd';
 import { TablePlugin, TableRowPlugin, TableCellPlugin, TableCellHeaderPlugin } from '@platejs/table/react';
 import { insertTable, insertTableRow, insertTableColumn, deleteTable, deleteRow, deleteColumn } from '@platejs/table';
 import FontSelector from './FontSelector';
@@ -64,11 +66,13 @@ import FontSizeSelector from './FontSizeSelector';
 import InlineEditPanel from './InlineEditPanel';
 import StatusBar from './StatusBar';
 import SelectionToolbar from './SelectionToolbar';
+import FindReplace from './FindReplace';
 import { getFontByName, FONT_OPTIONS } from '../lib/fonts';
 import type { FeedbackComment } from '../lib/types';
 import type { Citation } from '../lib/api';
 import { useEditorBridge } from '../hooks/useEditorBridge';
-import { htmlToSlateNodes, plainTextToSlateNodes } from '../lib/importers';
+import { htmlToSlateNodes, plainTextToSlateNodes, markdownToSlateNodes } from '../lib/importers';
+import { slateToMarkdown, slateToHtml, slateToPlainText, downloadFile } from '../lib/exporters';
 // CursorOverlay temporarily disabled for debugging
 // import CursorOverlay from './CursorOverlay';
 
@@ -496,6 +500,57 @@ function LineSpacingSelector({ currentSpacing, onSpacingChange }: {
 
 const ZOOM_LEVELS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
 
+function ExportMenu({ editor }: { editor: AnyEditor }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const nodes = editor.children || [];
+  const exportAs = (format: 'md' | 'html' | 'txt') => {
+    setOpen(false);
+    switch (format) {
+      case 'md': downloadFile(slateToMarkdown(nodes), 'draft.md', 'text/markdown'); break;
+      case 'html': downloadFile(slateToHtml(nodes), 'draft.html', 'text/html'); break;
+      case 'txt': downloadFile(slateToPlainText(nodes), 'draft.txt', 'text/plain'); break;
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onMouseDown={(e) => { e.preventDefault(); setOpen(!open); }}
+        className="text-ink-lighter hover:text-ink transition-colors text-xs px-2 py-1 rounded hover:bg-cream-dark"
+        title="Export"
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M7 2v7M4 6l3 3 3-3M2 10v1.5a1 1 0 001 1h8a1 1 0 001-1V10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-cream border border-border rounded-lg shadow-lg py-1 z-50 min-w-[140px]">
+          <button onClick={() => exportAs('md')} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-cream-dark transition-colors">
+            Markdown (.md)
+          </button>
+          <button onClick={() => exportAs('html')} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-cream-dark transition-colors">
+            HTML (.html)
+          </button>
+          <button onClick={() => exportAs('txt')} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-cream-dark transition-colors">
+            Plain Text (.txt)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Toolbar({ fontName, onFontChange, zoom, onZoomChange, isMobile }: {
   fontName: string;
   onFontChange: (name: string) => void;
@@ -790,6 +845,9 @@ function Toolbar({ fontName, onFontChange, zoom, onZoomChange, isMobile }: {
           </svg>
         </button>
       </div>
+
+      {/* Export dropdown */}
+      <ExportMenu editor={editor} />
     </div>
   );
 }
@@ -824,6 +882,9 @@ export default function Editor({
   const clickRef = useRef(onCommentClick);
   const pageBackgroundRef = useRef<HTMLDivElement>(null);
 
+  // Find/Replace state
+  const [findVisible, setFindVisible] = useState(false);
+
   // Inline edit state
   const [editState, setEditState] = useState<{
     selectedText: string;
@@ -854,6 +915,32 @@ export default function Editor({
         TablePlugin,
         CitationLinkPlugin,
         PageBreakPlugin,
+        DndPlugin,
+        AutoformatPlugin.configure({
+          options: {
+            rules: [
+              // Block shortcuts (triggered by Space after pattern at line start)
+              { mode: 'block', match: '# ', type: 'h1' },
+              { mode: 'block', match: '## ', type: 'h2' },
+              { mode: 'block', match: '### ', type: 'h3' },
+              { mode: 'block', match: '> ', type: 'blockquote' },
+              { mode: 'block', match: '---', type: 'hr' },
+              // Mark shortcuts (wrap selection or text between markers)
+              { mode: 'mark', match: '**', type: 'bold' },
+              { mode: 'mark', match: '__', type: 'bold' },
+              { mode: 'mark', match: '*', type: 'italic' },
+              { mode: 'mark', match: '_', type: 'italic' },
+              { mode: 'mark', match: '~~', type: 'strikethrough' },
+              { mode: 'mark', match: '`', type: 'code' },
+              // Smart typography
+              { mode: 'text', match: '--', format: '\u2014' },        // em-dash
+              { mode: 'text', match: '...', format: '\u2026' },       // ellipsis
+              { mode: 'text', match: '(c)', format: '\u00A9' },       // ©
+              { mode: 'text', match: '(r)', format: '\u00AE' },       // ®
+              { mode: 'text', match: '(tm)', format: '\u2122' },      // ™
+            ],
+          },
+        }),
         ...(useCollab ? [YjsPlugin.configure({
           options: {
             cursors: {
@@ -1156,6 +1243,77 @@ export default function Editor({
     }
   }, [comments, activeCommentId, editor]);
 
+  // Cmd+F handler — opens find/replace bar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        setFindVisible(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
+  // Find/Replace callbacks
+  const handleFindHighlight = useCallback((matchIndex: number, matches: { start: number; end: number }[]) => {
+    if (!matches.length) return;
+    // Walk Slate nodes to find the text position and select it
+    const m = matches[matchIndex];
+    if (!m) return;
+    try {
+      let offset = 0;
+      const nodes = (editor as any).children || [];
+      for (let bi = 0; bi < nodes.length; bi++) {
+        const block = nodes[bi];
+        const children = block.children || [];
+        for (let ci = 0; ci < children.length; ci++) {
+          const leaf = children[ci];
+          const text = leaf.text || '';
+          if (offset + text.length > m.start) {
+            const anchor = { path: [bi, ci], offset: m.start - offset };
+            const focus = { path: [bi, ci], offset: Math.min(m.end - offset, text.length) };
+            (editor as any).select({ anchor, focus });
+            // Scroll into view
+            const domSel = window.getSelection();
+            if (domSel?.rangeCount) {
+              const range = domSel.getRangeAt(0);
+              const el = range.startContainer.parentElement;
+              el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+            return;
+          }
+          offset += text.length;
+        }
+        offset += 1; // newline between blocks
+      }
+    } catch { /* ignore */ }
+  }, [editor]);
+
+  const handleFindReplace = useCallback((start: number, end: number, replacement: string) => {
+    try {
+      let offset = 0;
+      const nodes = (editor as any).children || [];
+      for (let bi = 0; bi < nodes.length; bi++) {
+        const block = nodes[bi];
+        const children = block.children || [];
+        for (let ci = 0; ci < children.length; ci++) {
+          const leaf = children[ci];
+          const text = leaf.text || '';
+          if (offset + text.length > start) {
+            const anchor = { path: [bi, ci], offset: start - offset };
+            const focus = { path: [bi, ci], offset: Math.min(end - offset, text.length) };
+            (editor as any).select({ anchor, focus });
+            (editor as any).insertText(replacement);
+            return;
+          }
+          offset += text.length;
+        }
+        offset += 1;
+      }
+    } catch { /* ignore */ }
+  }, [editor]);
+
   // Cmd+K handler — opens inline edit popover above selection
   useEffect(() => {
     if (readOnly) return;
@@ -1383,6 +1541,13 @@ export default function Editor({
             hasProposal={!!proposedEdit}
           />
         )}
+        <FindReplace
+          visible={findVisible}
+          onClose={() => setFindVisible(false)}
+          getDocumentText={getDocumentText || (() => '')}
+          onHighlight={handleFindHighlight}
+          onReplace={handleFindReplace}
+        />
         <div
           className={`page-container${isLoading ? ' feedback-reading' : ''}${isShimmerFading ? ' feedback-fading' : ''}`}
           style={{
@@ -1399,7 +1564,19 @@ export default function Editor({
               const cd = e.clipboardData;
               if (!cd) return;
 
-              // 1. Image files — existing behavior
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const insert = (nodes: any[]) => (editor as any).insertFragment(nodes);
+
+              // 0. Cmd+Shift+V → paste-and-match-style (plain text only)
+              const ne = e.nativeEvent as ClipboardEvent & { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean };
+              if (ne.shiftKey && (ne.metaKey || ne.ctrlKey)) {
+                e.preventDefault();
+                const text = cd.getData('text/plain');
+                if (text) insert(plainTextToSlateNodes(text));
+                return;
+              }
+
+              // 1. Image files
               const items = cd.items;
               const imageFiles: File[] = [];
               if (items) {
@@ -1416,36 +1593,48 @@ export default function Editor({
                 return;
               }
 
-              // 2. HTML content — use our importer to strip styles and map to Slate
+              // 2. HTML content — strip styles, map to Slate marks
               const html = cd.getData('text/html');
               if (html && html.trim()) {
                 e.preventDefault();
                 try {
                   const nodes = htmlToSlateNodes(html);
-                  if (nodes.length > 0) {
-                    // Slate's insertFragment handles multi-block insertion properly
-                    // (merges the first block with current, keeps rest as new blocks)
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (editor as any).insertFragment(nodes);
-                  }
+                  if (nodes.length > 0) insert(nodes);
                 } catch (err) {
                   console.warn('[Paste] HTML parse failed, falling back to plain text:', err);
                   const text = cd.getData('text/plain');
-                  if (text) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (editor as any).insertFragment(plainTextToSlateNodes(text));
-                  }
+                  if (text) insert(plainTextToSlateNodes(text));
                 }
                 return;
               }
 
-              // 3. Plain text fallback — let default handle single-line paste,
-              // but for multi-line text, convert to paragraphs
+              // 3. Plain text — detect Markdown or PDF line breaks
               const text = cd.getData('text/plain');
               if (text && text.includes('\n')) {
                 e.preventDefault();
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (editor as any).insertFragment(plainTextToSlateNodes(text));
+                // Detect Markdown: has headings, bold, links, or lists
+                const looksLikeMarkdown = /^#{1,3}\s|^\s*[-*+]\s|\*{2}.+\*{2}|\[.+\]\(.+\)|^>\s/m.test(text);
+                if (looksLikeMarkdown) {
+                  insert(markdownToSlateNodes(text));
+                  return;
+                }
+                // Detect broken PDF lines: short lines not ending in
+                // punctuation followed by lowercase continuations
+                const lines = text.split('\n');
+                const pdfBreaks = lines.length > 3 && lines.filter((l, i) =>
+                  l.length > 10 && l.length < 80 && i < lines.length - 1 &&
+                  !/[.!?:;"\u201D)\]]$/.test(l.trim()) &&
+                  /^[a-z]/.test((lines[i + 1] || '').trim())
+                ).length > lines.length * 0.3;
+                if (pdfBreaks) {
+                  // Merge broken lines within paragraphs (blank line = real break)
+                  const merged = text.replace(/\n{2,}/g, '\n\n').split('\n\n').map(
+                    para => para.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ').trim()
+                  ).filter(Boolean);
+                  insert(merged.map(p => ({ type: 'p', children: [{ text: p }] })));
+                  return;
+                }
+                insert(plainTextToSlateNodes(text));
               }
               // else: let Slate default handle single-line plain text paste
             }}
@@ -1461,6 +1650,38 @@ export default function Editor({
               if (imageFiles.length > 0) {
                 e.preventDefault();
                 insertImageFiles(editor, imageFiles);
+              }
+            }}
+            onKeyDown={(e: React.KeyboardEvent) => {
+              // Tab / Shift+Tab indentation
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                  // Outdent: remove leading 2 spaces from current block
+                  try {
+                    const entry = (editor as any).above?.({ match: (n: any) => (editor as any).isBlock?.(n) });
+                    if (entry) {
+                      const [node, path] = entry;
+                      const text = node.children?.[0]?.text || '';
+                      if (text.startsWith('  ')) {
+                        (editor as any).select({ anchor: { path: [...path, 0], offset: 0 }, focus: { path: [...path, 0], offset: 2 } });
+                        (editor as any).deleteFragment();
+                      }
+                    }
+                  } catch { /* ignore */ }
+                } else {
+                  // Indent: insert 2 spaces at start of current block
+                  try {
+                    const entry = (editor as any).above?.({ match: (n: any) => (editor as any).isBlock?.(n) });
+                    if (entry) {
+                      const [, path] = entry;
+                      (editor as any).insertText('  ', { at: { path: [...path, 0], offset: 0 } });
+                    }
+                  } catch {
+                    // Fallback: insert at cursor
+                    (editor as any).insertText('  ');
+                  }
+                }
               }
             }}
           />
