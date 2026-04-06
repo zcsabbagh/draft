@@ -33,7 +33,9 @@ interface StatusBarProps {
   getSelectedText: () => string;
 }
 
-const PAGE_HEIGHT = 1056;
+const PAGE_VISIBLE = 1056;
+const PAGE_GAP = 40;
+const PAGE_CYCLE = PAGE_VISIBLE + PAGE_GAP; // 1096
 
 // Hoisted regex — avoids re-creation per call (js-hoist-regexp)
 const WHITESPACE_RE = /\s+/;
@@ -143,13 +145,25 @@ export default function StatusBar({ editorRef, getDocumentText, getSelectedText 
     if (!el) return;
 
     const handleScroll = () => {
+      // Find the page-content element inside the scroll container
+      const pageContent = el.querySelector('.page-content') as HTMLElement | null;
+      if (!pageContent) return;
+
+      // Measure actual content height: last child's bottom relative to
+      // page-content top, minus padding. This avoids counting empty
+      // min-height space as extra pages.
+      const paddingTop = parseFloat(getComputedStyle(pageContent).paddingTop) || 96;
+      const paddingBottom = parseFloat(getComputedStyle(pageContent).paddingBottom) || 96;
+      const contentHeight = pageContent.scrollHeight - paddingTop - paddingBottom;
+
+      const pages = Math.max(1, Math.ceil(contentHeight / PAGE_CYCLE));
+
+      // Current page from scroll position within the page-background
       const scrollTop = el.scrollTop;
-      const scrollHeight = el.scrollHeight;
-      // Use the center of the visible area to determine which page is "current"
       const viewportCenter = scrollTop + el.clientHeight / 2;
-      const page = Math.floor(viewportCenter / PAGE_HEIGHT) + 1;
-      const pages = Math.max(1, Math.ceil(scrollHeight / PAGE_HEIGHT));
-      setCurrentPage(Math.min(page, pages));
+      const page = Math.floor(viewportCenter / PAGE_CYCLE) + 1;
+
+      setCurrentPage(Math.min(Math.max(1, page), pages));
       setTotalPages(pages);
     };
 
