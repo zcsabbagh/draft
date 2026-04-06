@@ -930,6 +930,7 @@ export default function App() {
                   onContextChange={handleContextChange}
                   onChatMessage={handleChatMessage}
                   onRequestDocumentFlow={handleRequestDocumentFlow}
+                  documentId={documentId}
                 />
               </div>
             </div>

@@ -66,6 +66,41 @@ export async function loadComments(
   return { comments, threads };
 }
 
+/** Save document flow feedback for a document. */
+export async function saveFlowFeedback(
+  documentId: string,
+  feedback: string,
+): Promise<void> {
+  if (!supabase || !feedback) return;
+
+  const sessionId = getSessionId();
+  const { error } = await supabase
+    .from('document_flow_feedback')
+    .upsert(
+      { document_id: documentId, session_id: sessionId, feedback },
+      { onConflict: 'document_id,session_id' },
+    );
+  if (error) console.warn('[Draft] Failed to save flow feedback:', error.message);
+}
+
+/** Load document flow feedback for a document. */
+export async function loadFlowFeedback(
+  documentId: string,
+): Promise<string | null> {
+  if (!supabase) return null;
+
+  const sessionId = getSessionId();
+  const { data, error } = await supabase
+    .from('document_flow_feedback')
+    .select('feedback')
+    .eq('document_id', documentId)
+    .eq('session_id', sessionId)
+    .single();
+
+  if (error || !data) return null;
+  return data.feedback as string;
+}
+
 /** Update the thread (conversation) for a specific comment. */
 export async function saveThread(
   documentId: string,

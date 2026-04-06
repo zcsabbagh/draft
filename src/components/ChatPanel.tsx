@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useTransition, memo, useLayoutEffect } from 'react';
 import MarkdownContent from './MarkdownContent';
 import type { FeedbackComment, ChatMessage, CommentThread } from '../lib/types';
+import { saveFlowFeedback, loadFlowFeedback } from '../lib/comments';
 
 // ── Reviewer Personas ──
 // Each feedback type maps to an animal reviewer with a personality
@@ -248,6 +249,7 @@ interface ChatPanelProps {
   onResolveComment?: (id: string) => void;
   resolvedComments?: Set<string>;
   onRequestDocumentFlow?: () => Promise<string>;
+  documentId?: string;
 }
 
 export default function ChatPanel({
@@ -266,6 +268,7 @@ export default function ChatPanel({
   onResolveComment,
   resolvedComments,
   onRequestDocumentFlow,
+  documentId,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('feedback');
@@ -287,6 +290,14 @@ export default function ChatPanel({
   );
 
   const resolved = resolvedComments || localResolved;
+
+  // Load persisted flow feedback on mount
+  useEffect(() => {
+    if (!documentId) return;
+    loadFlowFeedback(documentId).then((saved) => {
+      if (saved) setFlowFeedback(saved);
+    });
+  }, [documentId]);
 
   const handleResolve = useCallback((id: string) => {
     if (onResolveComment) {
@@ -377,13 +388,14 @@ export default function ChatPanel({
       try {
         const text = await onRequestDocumentFlow();
         setFlowFeedback(text);
+        if (documentId) saveFlowFeedback(documentId, text);
       } catch (e) {
         setFlowError(e instanceof Error ? e.message : String(e));
       } finally {
         setFlowLoading(false);
       }
     }
-  }, [flowFeedback, flowLoading, onRequestDocumentFlow]);
+  }, [flowFeedback, flowLoading, onRequestDocumentFlow, documentId]);
 
   const handleRegenerateFlow = useCallback(async () => {
     if (!onRequestDocumentFlow || flowLoading) return;
@@ -393,12 +405,13 @@ export default function ChatPanel({
     try {
       const text = await onRequestDocumentFlow();
       setFlowFeedback(text);
+      if (documentId) saveFlowFeedback(documentId, text);
     } catch (e) {
       setFlowError(e instanceof Error ? e.message : String(e));
     } finally {
       setFlowLoading(false);
     }
-  }, [onRequestDocumentFlow, flowLoading]);
+  }, [onRequestDocumentFlow, flowLoading, documentId]);
 
   const unresolvedCount = useMemo(
     () => comments.filter((c) => !resolved.has(c.id)).length,
